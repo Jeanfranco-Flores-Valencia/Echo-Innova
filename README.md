@@ -5,6 +5,10 @@ estaciones de pared). Grupo 3 · Tecsup.
 
 > **Echo Guard** = *Echo* (el eco que guía la evacuación) + *Guard* (resguardo, seguridad).
 
+### 📲 [Descargar la app (APK)](https://github.com/Jeanfranco-Flores-Valencia/Echo-Innova/releases/latest/download/echo-guard.apk)
+Versión de prueba para Android 8.0+. Instrucciones de instalación y novedades en
+[Releases](https://github.com/Jeanfranco-Flores-Valencia/Echo-Innova/releases).
+
 | Inicio (alumno) | Roles y permisos (dirección) | Guía sin internet |
 |:-:|:-:|:-:|
 | ![Inicio](docs/capturas/inicio-alumno.png) | ![Roles y permisos](docs/capturas/roles-y-permisos.png) | ![Guía](docs/capturas/guia.png) |
@@ -16,8 +20,8 @@ estaciones de pared). Grupo 3 · Tecsup.
    El perfil queda guardado en el teléfono: al volver a abrir la app entra directo a Inicio.
 4. **Personal:** botón "Personal" en Inicio (o "Soy docente o brigadista" en el registro) → PIN.
 
-También puedes descargar el APK listo para instalar desde la pestaña **Actions** de GitHub
-(artefacto `echo-guard-debug-apk`).
+También puedes descargar el APK listo para instalar desde
+[Releases](https://github.com/Jeanfranco-Flores-Valencia/Echo-Innova/releases).
 
 | Modo | Cómo se entra | ¿Se mantiene al cerrar la app? |
 |---|---|---|
@@ -140,7 +144,11 @@ com.floresvalencia.echoguard
 ./gradlew lintDebug           # lint de Android
 ./gradlew assembleDebug       # APK en app/build/outputs/apk/debug/
 ```
-GitHub Actions corre las tres en cada push (`.github/workflows/android.yml`) y publica el APK.
+GitHub Actions corre las tres en cada push a `main` (`.github/workflows/android.yml`).
+
+**Publicar una versión nueva:** sube `versionCode` y `versionName` en `app/build.gradle.kts`, haz
+commit y crea un tag (`git tag v1.2 && git push origin v1.2`, o desde GitHub → *Releases → Draft a new
+release*). El workflow `release.yml` compila, prueba y publica `echo-guard.apk` en Releases.
 
 El esquema de la base de datos se versiona en `app/schemas/`. Si cambias una entidad, sube la
 `version` de `EchoDatabase` y agrega una migración.
