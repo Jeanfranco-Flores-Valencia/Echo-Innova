@@ -1,10 +1,16 @@
 name: Publicar versión
 
-# Se ejecuta al crear un tag de versión (v1.1, v1.2...). Compila, corre las pruebas
-# y publica el APK en GitHub Releases para que cualquiera lo descargue.
+# Se ejecuta al crear un tag de versión (v1.1, v1.2...) o a mano desde
+# Actions → "Publicar versión" → Run workflow (crea el tag automáticamente).
+# Compila, corre las pruebas y publica el APK en GitHub Releases.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión a publicar (ej. v1.2)"
+        required: true
 
 permissions:
   contents: write
@@ -12,6 +18,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -32,13 +40,15 @@ jobs:
       - name: Preparar archivos
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk echo-guard.apk
-          cp app/build/outputs/apk/debug/app-debug.apk "echo-guard-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "echo-guard-${VERSION}.apk"
 
       - name: Publicar en Releases
         uses: softprops/action-gh-release@v2
         with:
-          name: Echo Guard ${{ github.ref_name }} · versión de prueba
+          tag_name: ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: Echo Guard ${{ env.VERSION }} · versión de prueba
           body_path: .github/release-notes.md
           files: |
             echo-guard.apk
-            echo-guard-${{ github.ref_name }}.apk
+            echo-guard-${{ env.VERSION }}.apk

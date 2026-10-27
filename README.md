@@ -148,7 +148,8 @@ GitHub Actions corre las tres en cada push a `main` (`.github/workflows/android.
 
 **Publicar una versión nueva:** sube `versionCode` y `versionName` en `app/build.gradle.kts`, haz
 commit y crea un tag (`git tag v1.2 && git push origin v1.2`, o desde GitHub → *Releases → Draft a new
-release*). El workflow `release.yml` compila, prueba y publica `echo-guard.apk` en Releases.
+release*), o ve a *Actions → Publicar versión → Run workflow* y escribe la versión. El workflow
+`release.yml` compila, prueba y publica `echo-guard.apk` en Releases.
 
 El esquema de la base de datos se versiona en `app/schemas/`. Si cambias una entidad, sube la
 `version` de `EchoDatabase` y agrega una migración.
