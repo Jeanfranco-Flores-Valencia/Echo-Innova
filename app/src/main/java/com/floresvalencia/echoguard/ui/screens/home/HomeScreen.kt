@@ -177,7 +177,7 @@ fun HomeScreen(
                 ToolTile(Icons.AutoMirrored.Rounded.MenuBook, "Guía de emergencias", "Qué hacer en sismo, incendio, gas", EchoColors.DrillAmber,
                     onClick = { onNavigate(Routes.GUIDE) }, modifier = Modifier.weight(1f))
                 ToolTile(Icons.Rounded.ContactPhone, "Contactos SOS", "A quién avisar por SMS", EchoColors.Red,
-                    onClick = { onNavigate(Routes.CONTACTS) }, modifier = Modifier.weight(1f), badge = if (ui.contacts == 0) "!" else "${ui.contacts}")
+                    onClick = { onNavigate(Routes.CONTACTS) }, modifier = Modifier.weight(1f), badge = if (ui.contacts == 0) "Falta" else "${ui.contacts}")
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -417,7 +417,7 @@ private fun StudentHome(ui: HomeUiState, onReport: () -> Unit, onHelp: () -> Uni
     }
     if (ui.myActiveReports > 0) PendingNote()
     Spacer(Modifier.height(12.dp))
-    Surface(shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(1.dp, EchoColors.Line)) {
+    Surface(shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(1.dp, EchoColors.Line), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Si hay evacuación", fontWeight = FontWeight.Bold, color = EchoColors.Ink)
             val guide = if (ui.user?.role == Role.GENERAL) "Sigue la señalética y al personal" else "Sigue a tu docente"
@@ -446,7 +446,7 @@ private fun PendingNote() {
 private fun StatusHero(ui: HomeUiState) {
     val e = ui.emergency
     if (!e.active) {
-        Surface(shape = RoundedCornerShape(22.dp), color = Color.White, shadowElevation = 8.dp) {
+        Surface(shape = RoundedCornerShape(22.dp), color = Color.White, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconChip(Icons.Rounded.CheckCircle, EchoColors.Green, size = 52.dp)
                 Spacer(Modifier.width(14.dp))

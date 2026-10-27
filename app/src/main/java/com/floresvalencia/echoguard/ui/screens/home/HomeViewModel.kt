@@ -88,7 +88,7 @@ class HomeViewModel(private val repo: EchoRepository = EchoRepository) : ViewMod
 
     val ui: StateFlow<HomeUiState> = combine(base, people) { s, (safe, contacts) ->
         s.copy(safeCount = safe.size, iAmSafe = safe.any { it.username == s.user?.username }, contacts = contacts)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState(user = repo.session.value))
 
     fun report(type: HazardType) = repo.reportEmergency(repo.session.value, type)
     fun dismissAlert(id: Int) = repo.resolveAlert(id)

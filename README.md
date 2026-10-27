@@ -5,6 +5,10 @@ estaciones de pared). Grupo 3 · Tecsup.
 
 > **Echo Guard** = *Echo* (el eco que guía la evacuación) + *Guard* (resguardo, seguridad).
 
+| Inicio (alumno) | Roles y permisos (dirección) | Guía sin internet |
+|:-:|:-:|:-:|
+| ![Inicio](docs/capturas/inicio-alumno.png) | ![Roles y permisos](docs/capturas/roles-y-permisos.png) | ![Guía](docs/capturas/guia.png) |
+
 ## Cómo abrir
 1. Android Studio (Ladybug o superior) → **Open** → la carpeta del repositorio.
 2. Esperar la sincronización de Gradle → **Run** en emulador o celular (Android 8.0+).
