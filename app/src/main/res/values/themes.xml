@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BaymaxEcho" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.EchoGuard" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/echo_navy</item>
     </style>
 </resources>

@@ -18,5 +18,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "BaymaxEcho"
+rootProject.name = "EchoGuard"
 include(":app")
