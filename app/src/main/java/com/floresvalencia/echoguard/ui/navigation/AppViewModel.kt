@@ -149,10 +149,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Resumen para mostrar al finalizar, o null si el rol no puede finalizar. */
     fun stopEmergency(): String? {
-        val mode = repo.emergency.value.mode
-        val ms = repo.stopEmergency(repo.session.value) ?: return null
-        val label = if (mode == EmergencyMode.REAL) "Evacuación finalizada" else "Simulacro finalizado"
-        return "$label · ${formatElapsed(ms)}"
+        if (!repo.emergency.value.active) return "No hay una evacuación en curso"
+        val s = repo.stopEmergency(repo.session.value) ?: return null
+        val label = if (s.mode == EmergencyMode.REAL) "Evacuación finalizada" else "Simulacro finalizado"
+        return "$label · ${formatElapsed(s.durationMs)} · salieron ${s.evacuated} de ${s.atAlarm}" +
+            if (s.stillInside > 0) " · ${s.stillInside} sin contar" else ""
     }
 
     /** Volver del modo personal al perfil regular (no borra el registro). */

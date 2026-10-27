@@ -313,8 +313,12 @@ private fun ManagerHome(
             }
             GradientBar(ui.occupancy.ratio, Modifier.padding(vertical = 14.dp))
             Row {
-                Text("${ui.occupancy.evacuated} evacuadas", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("${ui.occupancy.pending} pendientes", color = EchoColors.SkyText, fontSize = 13.sp)
+                if (ui.emergency.active) {
+                    Text("${ui.occupancy.evacuated} de ${ui.occupancy.atAlarm} evacuadas", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text("${ui.occupancy.pending} pendientes", color = EchoColors.SkyText, fontSize = 13.sp)
+                } else {
+                    Text("Aforo normal · toca para registrar entradas y salidas", color = EchoColors.SkyText, fontSize = 13.sp)
+                }
             }
         }
     }

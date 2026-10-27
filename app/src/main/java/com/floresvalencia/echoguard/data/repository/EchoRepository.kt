@@ -10,6 +10,8 @@ import com.floresvalencia.echoguard.data.model.AuditEntry
 import com.floresvalencia.echoguard.data.model.Classroom
 import com.floresvalencia.echoguard.data.model.EmergencyMode
 import com.floresvalencia.echoguard.data.model.EmergencyState
+import com.floresvalencia.echoguard.data.model.EntryResult
+import com.floresvalencia.echoguard.data.model.EvacuationSummary
 import com.floresvalencia.echoguard.data.model.ExitRoute
 import com.floresvalencia.echoguard.data.model.HazardType
 import com.floresvalencia.echoguard.data.model.MapPoint
@@ -479,6 +481,8 @@ object EchoRepository {
         if (user == null || !user.role.canStartEvacuation || mode == EmergencyMode.NONE) return false
         _emergency.value = EmergencyState(mode, System.currentTimeMillis(), user.name, cause)
         _safe.value = emptyList()
+        // Foto del aforo al sonar la alarma: todos los que están dentro quedan pendientes.
+        _occupancy.update { it.copy(atAlarm = it.inside, evacuated = 0) }
         audit(if (mode == EmergencyMode.REAL) "Evacuación REAL iniciada" else "Simulacro iniciado", cause?.label ?: "Sin causa indicada", user)
         // Despliega todos los rovers disponibles con ruta luminosa.
         _rovers.update { list ->
@@ -504,15 +508,22 @@ object EchoRepository {
         return true
     }
 
-    /** Devuelve la duración, o null si el usuario no tiene permiso. */
-    fun stopEmergency(user: User?): Long? {
+    /** Devuelve el resumen, o null si el usuario no tiene permiso o no había evacuación. */
+    fun stopEmergency(user: User?): EvacuationSummary? {
         if (user == null || !user.role.canStartEvacuation) return null
         val e = _emergency.value
-        if (!e.active) return 0L
+        if (!e.active) return null
+        val o = _occupancy.value
+        val summary = EvacuationSummary(
+            mode = e.mode,
+            durationMs = System.currentTimeMillis() - e.startedAtMillis,
+            atAlarm = o.atAlarm, evacuated = o.evacuated, stillInside = o.inside, markedSafe = _safe.value.size,
+        )
+        _occupancy.value = o.copy(atAlarm = 0, evacuated = 0)
         _emergency.value = EmergencyState()
         audit(
             if (e.mode == EmergencyMode.REAL) "Evacuación finalizada" else "Simulacro finalizado",
-            "${_safe.value.size} personas se marcaron a salvo", user,
+            "${summary.evacuated} de ${summary.atAlarm} salieron · ${summary.stillInside} sin contar · ${summary.markedSafe} a salvo en la app", user,
         )
         _alerts.update { l -> l.map { if (it.kind == AlertKind.EVACUATION) it.copy(active = false) else it } }
         // Los rovers desplegados vuelven a su estación (a cargar si les hace falta) y apagan la ruta luminosa.
@@ -527,31 +538,55 @@ object EchoRepository {
                 } else r
             }
         }
-        return System.currentTimeMillis() - e.startedAtMillis
+        return summary
     }
 
     // =================================================================
     // Aforo, rutas y aulas
     // =================================================================
-    fun registerExit(): Boolean {
+    /** Solo se guardan los pasos de los últimos 5 minutos. */
+    private fun List<Long>.recent(now: Long, add: Boolean): List<Long> =
+        filter { now - it <= Occupancy.RECENT_WINDOW_MS } + if (add) listOf(now) else emptyList()
+
+    /** Alguien salió por la puerta. Durante una evacuación cuenta como evacuada. */
+    fun registerExit(nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (!can(Permission.VIEW_ALL_CLASSROOMS)) return false
         val o = _occupancy.value
         if (o.inside <= 0) return false
-        _occupancy.value = o.copy(inside = o.inside - 1, evacuated = o.evacuated + 1,
-            pending = (o.pending - 1).coerceAtLeast(0), exits5m = o.exits5m + 1)
+        _occupancy.value = o.copy(
+            inside = o.inside - 1,
+            evacuated = if (_emergency.value.active) o.evacuated + 1 else o.evacuated,
+            exitTimes = o.exitTimes.recent(nowMillis, add = true),
+            entryTimes = o.entryTimes.recent(nowMillis, add = false),
+        )
         return true
     }
 
-    fun registerEntry(): Boolean {
-        if (!can(Permission.VIEW_ALL_CLASSROOMS)) return false
+    /**
+     * Alguien entró. Durante una evacuación nadie debería entrar: solo se acepta con
+     * [rescue] = true (bomberos o brigada que vuelve a entrar) y queda en el registro.
+     */
+    fun registerEntry(rescue: Boolean = false, nowMillis: Long = System.currentTimeMillis()): EntryResult {
+        if (!can(Permission.VIEW_ALL_CLASSROOMS)) return EntryResult.NO_PERMISSION
+        if (_emergency.value.active && !rescue) return EntryResult.DURING_EVACUATION
         val o = _occupancy.value
-        if (o.inside >= o.capacity) return false
-        _occupancy.value = o.copy(inside = o.inside + 1, entries5m = o.entries5m + 1)
-        return true
+        if (o.inside >= o.capacity) return EntryResult.FULL
+        _occupancy.value = o.copy(
+            inside = o.inside + 1,
+            entryTimes = o.entryTimes.recent(nowMillis, add = true),
+            exitTimes = o.exitTimes.recent(nowMillis, add = false),
+        )
+        if (rescue) audit("Reingreso durante la evacuación", "Personal de rescate")
+        return EntryResult.OK
     }
 
+    /** Vuelve a contar desde cero. En plena evacuación la foto inicial pasa a ser el conteo actual. */
     fun resetOccupancy() {
-        if (can(Permission.VIEW_ALL_CLASSROOMS)) _occupancy.value = initialOccupancy
+        if (!can(Permission.VIEW_ALL_CLASSROOMS)) return
+        _occupancy.value = if (_emergency.value.active) {
+            _occupancy.value.let { it.copy(atAlarm = it.inside, evacuated = 0, entryTimes = emptyList(), exitTimes = emptyList()) }
+        } else initialOccupancy
+        audit("Contador de aforo reiniciado")
     }
 
     fun cycleRoute(id: String) {

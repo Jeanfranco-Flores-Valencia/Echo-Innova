@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.floresvalencia.echoguard.data.model.Classroom
+import com.floresvalencia.echoguard.data.model.EntryResult
 import com.floresvalencia.echoguard.data.model.ExitRoute
 import com.floresvalencia.echoguard.data.model.RollStatus
 import com.floresvalencia.echoguard.data.model.OccupancyLevel
@@ -72,6 +73,15 @@ fun EvacuationScreen(
     val ui by vm.ui.collectAsStateWithLifecycle()
     val o = ui.occupancy
     var confirmReset by rememberSaveable { mutableStateOf(false) }
+    var confirmRescue by rememberSaveable { mutableStateOf(false) }
+    val onEntry: () -> Unit = {
+        when (vm.registerEntry()) {
+            EntryResult.DURING_EVACUATION -> confirmRescue = true
+            EntryResult.FULL -> onMessage("Aforo máximo alcanzado")
+            EntryResult.NO_PERMISSION -> onMessage("Tu rol no registra el aforo")
+            EntryResult.OK -> Unit
+        }
+    }
     var tab by rememberSaveable { mutableStateOf(0) }
 
     val levelColor = when (o.level) {
@@ -130,22 +140,36 @@ fun EvacuationScreen(
                 Text("Máximo ${o.capacity}", fontSize = 11.5.sp, color = EchoColors.Muted)
             }
 
-            // 3) Evacuadas / pendientes
+            // 3) Evacuadas / pendientes (solo durante una evacuación)
             Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LedgerItem("Evacuadas", o.evacuated, EchoColors.Green, Modifier.weight(1f))
-                LedgerItem("Pendientes", o.pending, EchoColors.Amber, Modifier.weight(1f))
+            if (ui.emergencyActive) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LedgerItem("Evacuadas", o.evacuated, EchoColors.Green, Modifier.weight(1f))
+                    LedgerItem("Pendientes", o.pending, EchoColors.Amber, Modifier.weight(1f))
+                }
+                Text(
+                    "Salieron ${o.evacuated} de ${o.atAlarm} personas que había al sonar la alarma (${o.evacuatedPercent}%)",
+                    fontSize = 13.sp, color = EchoColors.GreenDark, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                )
+            } else {
+                Text(
+                    "Sin evacuación en curso: registra quién entra y sale para conocer el aforo. " +
+                        "Al iniciar una evacuación, todas las personas dentro pasan a \"pendientes\".",
+                    fontSize = 13.sp, color = EchoColors.Muted, modifier = Modifier.padding(horizontal = 4.dp),
+                )
             }
 
             // 4) Botones enormes de conteo
             SectionTitle("Registrar paso")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CounterButton(
-                    label = "Entrada", count = o.entries5m, icon = Icons.Rounded.Add,
-                    container = Color.White, accent = EchoColors.Ink, modifier = Modifier.weight(1f),
-                ) { if (!vm.registerEntry()) onMessage("Aforo máximo alcanzado") }
+                    label = if (ui.emergencyActive) "Reingreso" else "Entrada", count = ui.entries5m, icon = Icons.Rounded.Add,
+                    container = Color.White, accent = if (ui.emergencyActive) EchoColors.Soft else EchoColors.Ink, modifier = Modifier.weight(1f),
+                    onClick = onEntry,
+                )
                 CounterButton(
-                    label = "Salida", count = o.exits5m, icon = Icons.Rounded.Remove,
+                    label = "Salida", count = ui.exits5m, icon = Icons.Rounded.Remove,
                     container = EchoColors.GreenSoft, accent = EchoColors.GreenDark, modifier = Modifier.weight(1f),
                 ) { if (!vm.registerExit()) onMessage("No hay personas dentro") }
             }
@@ -172,12 +196,33 @@ fun EvacuationScreen(
         }
     }
 
+    if (confirmRescue) {
+        AlertDialog(
+            onDismissRequest = { confirmRescue = false },
+            containerColor = Color.White,
+            title = { Text("¿Registrar un reingreso?") },
+            text = { Text("Durante la evacuación nadie debe entrar. Regístralo solo si entra personal de rescate (bomberos o brigada). Quedará en el registro de acciones.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRescue = false
+                    if (vm.registerEntry(rescue = true) == EntryResult.OK) onMessage("Reingreso registrado")
+                }) { Text("Registrar", color = EchoColors.RedText, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRescue = false }) { Text("Cancelar", color = EchoColors.Ink) } },
+        )
+    }
+
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             containerColor = Color.White,
             title = { Text("¿Reiniciar contador?") },
-            text = { Text("Se perderá el conteo actual.") },
+            text = {
+                Text(
+                    if (ui.emergencyActive) "El conteo de la evacuación empezará de nuevo con las ${o.inside} personas que figuran dentro."
+                    else "El aforo vuelve a su valor inicial."
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     vm.reset(); confirmReset = false; onMessage("Contador reiniciado")

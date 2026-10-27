@@ -2,6 +2,7 @@ package com.floresvalencia.echoguard
 
 import com.floresvalencia.echoguard.data.model.AuditEntry
 import com.floresvalencia.echoguard.data.model.EmergencyMode
+import com.floresvalencia.echoguard.data.model.EntryResult
 import com.floresvalencia.echoguard.data.model.Role
 import com.floresvalencia.echoguard.data.model.RollStatus
 import com.floresvalencia.echoguard.data.model.RoverMode
@@ -73,7 +74,7 @@ class EchoRepositoryTest {
         repo.enterStaffMode("1111")
         assertTrue(repo.startEmergency(repo.session.value, EmergencyMode.DRILL, null))
         assertTrue(repo.rovers.value.any { it.mode == RoverMode.PATROLLING && it.lightRoute })
-        assertTrue(repo.stopEmergency(repo.session.value)!! >= 0)
+        assertTrue(repo.stopEmergency(repo.session.value)!!.durationMs >= 0)
         repo.rovers.value.filter { it.online }.forEach { r ->
             assertTrue("${r.id} sigue desplegado", r.mode == RoverMode.DOCKED || r.mode == RoverMode.CHARGING)
             assertFalse(r.lightRoute)
@@ -120,5 +121,56 @@ class EchoRepositoryTest {
         repo.register("Ana", student = true, classroomId = "3A")
         repo.resolveAlert(id)
         assertTrue(repo.alerts.value.first { it.id == id }.active)
+    }
+
+    @Test fun `al iniciar la evacuacion todos los que estan dentro quedan pendientes`() = runTest {
+        repo.enterStaffMode("1111")
+        val inside = repo.occupancy.value.inside
+        assertEquals(0, repo.occupancy.value.evacuated)
+        repo.startEmergency(repo.session.value, EmergencyMode.DRILL, null)
+        assertEquals(inside, repo.occupancy.value.atAlarm)
+        repeat(3) { assertTrue(repo.registerExit()) }
+        val o = repo.occupancy.value
+        assertEquals(3, o.evacuated)
+        assertEquals(inside - 3, o.pending)
+        val summary = repo.stopEmergency(repo.session.value)!!
+        assertEquals(inside, summary.atAlarm)
+        assertEquals(3, summary.evacuated)
+        assertEquals(inside - 3, summary.stillInside)
+        assertEquals(0, repo.occupancy.value.atAlarm)
+    }
+
+    @Test fun `salidas sin evacuacion no cuentan como evacuadas`() = runTest {
+        repo.enterStaffMode("1111")
+        repo.registerExit()
+        assertEquals(0, repo.occupancy.value.evacuated)
+    }
+
+    @Test fun `durante la evacuacion solo se acepta un reingreso de rescate`() = runTest {
+        repo.enterStaffMode("1111")
+        repo.startEmergency(repo.session.value, EmergencyMode.DRILL, null)
+        val inside = repo.occupancy.value.inside
+        assertEquals(EntryResult.DURING_EVACUATION, repo.registerEntry())
+        assertEquals(inside, repo.occupancy.value.inside)
+        assertEquals(EntryResult.OK, repo.registerEntry(rescue = true))
+        assertEquals(inside + 1, repo.occupancy.value.inside)
+        assertTrue(audit.any { it.action == "Reingreso durante la evacuación" })
+    }
+
+    @Test fun `ultimos 5 minutos descarta pasos antiguos`() = runTest {
+        repo.enterStaffMode("1111")
+        val t = 10_000_000L
+        repo.registerExit(t)
+        repo.registerExit(t + 60_000)
+        repo.registerExit(t + 6 * 60_000)
+        val o = repo.occupancy.value
+        assertEquals(2, o.exitsLast5Min(t + 6 * 60_000))
+        assertEquals(0, o.exitsLast5Min(t + 20 * 60_000))
+    }
+
+    @Test fun `un alumno no registra el aforo`() {
+        repo.register("Ana", student = true, classroomId = "3A")
+        assertEquals(EntryResult.NO_PERMISSION, repo.registerEntry())
+        assertFalse(repo.registerExit())
     }
 }

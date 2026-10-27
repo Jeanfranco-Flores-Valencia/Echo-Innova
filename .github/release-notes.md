@@ -8,6 +8,12 @@
 2. Haz las tareas que te indica, responde las preguntas y envía tu opinión.
 3. Para probar como personal: botón **Personal** → PIN demo `1111` brigadista · `2222` dirección · `3333` docente.
 
+## Novedades de la v1.2
+- Contador de aforo ligado a la evacuación: al iniciarla, todas las personas dentro pasan a "pendientes" y cada salida suma a "evacuadas" (con porcentaje).
+- "Últimos 5 min" ahora cuenta de verdad solo los pasos recientes.
+- Durante la evacuación, la entrada se bloquea; solo se registra un reingreso de rescate con confirmación.
+- Al finalizar, el resumen indica cuántas personas salieron y cuántas quedaron sin contar.
+
 ## Qué incluye
 - Roles y permisos con cuentas de personal, bloqueo por intentos y registro de acciones.
 - SOS a contactos de emergencia por SMS (sin internet) con ubicación GPS y batería.

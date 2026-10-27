@@ -256,14 +256,30 @@ data class EmergencyState(
 
 enum class OccupancyLevel { NORMAL, HIGH, FULL }
 
+/**
+ * Aforo del edificio. Fuera de una evacuación solo importa cuántas personas hay dentro;
+ * al iniciar una evacuación se toma la foto de [atAlarm] y cada salida cuenta como evacuada.
+ */
 data class Occupancy(
     val inside: Int = 120,
     val capacity: Int = 150,
-    val evacuated: Int = 84,
-    val pending: Int = 36,
-    val entries5m: Int = 3,
-    val exits5m: Int = 18,
+    /** Personas dentro al iniciar la evacuación (0 si no hay evacuación). */
+    val atAlarm: Int = 0,
+    /** Salidas registradas desde que empezó la evacuación. */
+    val evacuated: Int = 0,
+    /** Momentos de las entradas y salidas recientes (para "últimos 5 min"). */
+    val entryTimes: List<Long> = emptyList(),
+    val exitTimes: List<Long> = emptyList(),
 ) {
+    /** Durante la evacuación, quienes siguen dentro están pendientes de salir. */
+    val pending: Int get() = inside
+
+    /** Porcentaje de evacuación respecto a quienes había al sonar la alarma. */
+    val evacuatedPercent: Int get() = if (atAlarm == 0) 0 else (evacuated * 100 / atAlarm).coerceAtMost(100)
+
+    fun entriesLast5Min(now: Long): Int = entryTimes.count { now - it <= RECENT_WINDOW_MS }
+    fun exitsLast5Min(now: Long): Int = exitTimes.count { now - it <= RECENT_WINDOW_MS }
+
     val ratio: Float get() = (inside.toFloat() / capacity).coerceIn(0f, 1f)
     val percent: Int get() = (ratio * 100).toInt()
     val level: OccupancyLevel
@@ -272,7 +288,27 @@ data class Occupancy(
             inside >= capacity - 10 -> OccupancyLevel.HIGH
             else -> OccupancyLevel.NORMAL
         }
+
+    companion object {
+        const val RECENT_WINDOW_MS = 5 * 60_000L
+    }
 }
+
+enum class EntryResult { OK, FULL, DURING_EVACUATION, NO_PERMISSION }
+
+/** Resumen al finalizar una evacuación o simulacro. */
+data class EvacuationSummary(
+    val mode: EmergencyMode,
+    val durationMs: Long,
+    /** Personas dentro al iniciar. */
+    val atAlarm: Int,
+    /** Salidas registradas en la puerta. */
+    val evacuated: Int,
+    /** Siguen dentro según el contador. */
+    val stillInside: Int,
+    /** Se marcaron "Estoy a salvo" en la app. */
+    val markedSafe: Int,
+)
 
 /** Persona que confirmó "Estoy a salvo" durante la evacuación. */
 data class SafeMark(

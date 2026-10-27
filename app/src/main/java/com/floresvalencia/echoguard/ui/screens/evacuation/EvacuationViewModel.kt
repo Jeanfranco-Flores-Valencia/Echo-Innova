@@ -3,6 +3,7 @@ package com.floresvalencia.echoguard.ui.screens.evacuation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.floresvalencia.echoguard.data.model.Classroom
+import com.floresvalencia.echoguard.data.model.EntryResult
 import com.floresvalencia.echoguard.data.model.ExitRoute
 import com.floresvalencia.echoguard.data.model.Occupancy
 import com.floresvalencia.echoguard.data.model.SafeMark
@@ -22,9 +23,14 @@ data class EvacuationUiState(
     val canSeeAllClassrooms: Boolean = false,
     /** Quienes confirmaron "Estoy a salvo" (solo lo ve brigada / dirección). */
     val safe: List<SafeMark> = emptyList(),
+    val emergencyActive: Boolean = false,
+    val entries5m: Int = 0,
+    val exits5m: Int = 0,
 )
 
 class EvacuationViewModel(private val repo: EchoRepository = EchoRepository) : ViewModel() {
+    private val live = combine(repo.emergency, repo.now) { e, now -> e.active to now }
+
     val ui: StateFlow<EvacuationUiState> = combine(repo.occupancy, repo.routes, repo.classrooms, repo.session, repo.safe) { o, routes, rooms, user, safe ->
         EvacuationUiState(
             occupancy = o, routes = routes, recommended = routes.recommended(), classrooms = rooms,
@@ -32,10 +38,12 @@ class EvacuationViewModel(private val repo: EchoRepository = EchoRepository) : V
             canSeeAllClassrooms = user?.role?.canSeeAllClassrooms == true,
             safe = if (user?.role?.canSeeAllClassrooms == true) safe.sortedByDescending { it.timeMillis } else emptyList(),
         )
+    }.combine(live) { s, (active, now) ->
+        s.copy(emergencyActive = active, entries5m = s.occupancy.entriesLast5Min(now), exits5m = s.occupancy.exitsLast5Min(now))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EvacuationUiState())
 
     fun registerExit(): Boolean = repo.registerExit()
-    fun registerEntry(): Boolean = repo.registerEntry()
+    fun registerEntry(rescue: Boolean = false): EntryResult = repo.registerEntry(rescue)
     fun reset() = repo.resetOccupancy()
     fun cycleRoute(id: String) {
         if (ui.value.canReportRoutes) repo.cycleRoute(id)
