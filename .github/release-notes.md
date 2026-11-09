@@ -8,6 +8,11 @@
 2. Haz las tareas que te indica, responde las preguntas y envía tu opinión.
 3. Para probar como personal: botón **Personal** → PIN demo `1111` brigadista · `2222` dirección · `3333` docente.
 
+## Novedades de la v1.3
+- El sensor de sismo pasa a la estación de pared: fija a la estructura, sin falsas alarmas por la vibración de los motores.
+- La pantalla de Flota muestra el sensor sísmico de cada estación.
+- El rover mide humo, CO, temperatura, polvo y llama.
+
 ## Novedades de la v1.2
 - Contador de aforo ligado a la evacuación: al iniciarla, todas las personas dentro pasan a "pendientes" y cada salida suma a "evacuadas" (con porcentaje).
 - "Últimos 5 min" ahora cuenta de verdad solo los pasos recientes.
