@@ -173,4 +173,17 @@ class EchoRepositoryTest {
         assertEquals(EntryResult.NO_PERMISSION, repo.registerEntry())
         assertFalse(repo.registerExit())
     }
+
+    @Test fun `el sismo lo detecta la estacion y no un rover`() = runTest {
+        repo.enterStaffMode("1111")
+        val roversBefore = repo.rovers.value.map { it.sensors }
+        repo.simulateHazard(com.floresvalencia.echoguard.data.model.HazardType.EARTHQUAKE)
+        val alert = repo.alerts.value.last()
+        assertEquals("E1", alert.stationId)
+        assertNull(alert.roverId)
+        assertTrue(repo.stationReadings.value.getValue("E1").seismicAlarm)
+        assertEquals(roversBefore, repo.rovers.value.map { it.sensors })
+        repo.resolveAlert(alert.id)
+        assertFalse(repo.stationReadings.value.getValue("E1").seismicAlarm)
+    }
 }

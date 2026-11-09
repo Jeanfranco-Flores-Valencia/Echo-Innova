@@ -154,8 +154,14 @@ release*), o ve a *Actions → Publicar versión → Run workflow* y escribe la 
 El esquema de la base de datos se versiona en `app/schemas/`. Si cambias una entidad, sube la
 `version` de `EchoDatabase` y agrega una migración.
 
+## Sensores: qué mide cada parte
+| Dónde | Sensores | Por qué ahí |
+|---|---|---|
+| **Rover** (móvil) | Humo, monóxido de carbono, temperatura, polvo, llama y cámara orientable | Recorre los pasillos y mide donde está el peligro |
+| **Estación de pared** (fija) | Sismo (acelerómetro) | Está anclada a la estructura: los motores y orugas del rover darían falsas alarmas |
+
 ## Conectar el hardware real
 Reemplazar el cuerpo de las funciones de `EchoRepository` (MQTT, Firebase o HTTP al ESP32).
-Los umbrales de sensores están en `SensorReadings` y deben calibrarse con los sensores reales.
+Los umbrales de sensores están en `SensorReadings` (rover) y `StationReadings` (estación) y deben calibrarse con los sensores reales.
 Para producción, los PIN del personal deberían validarse en un servidor, y las alarmas con la app
 cerrada necesitan notificaciones push (FCM) o un servicio en primer plano.

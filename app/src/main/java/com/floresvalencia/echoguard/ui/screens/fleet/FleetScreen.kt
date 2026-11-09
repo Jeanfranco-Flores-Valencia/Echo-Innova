@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.floresvalencia.echoguard.data.model.HazardType
 import com.floresvalencia.echoguard.data.model.Rover
 import com.floresvalencia.echoguard.data.model.RoverMode
+import com.floresvalencia.echoguard.data.model.StationReadings
 import com.floresvalencia.echoguard.data.model.formatAgo
 import com.floresvalencia.echoguard.ui.components.BuildingMap
 import com.floresvalencia.echoguard.ui.components.MapLegend
@@ -104,6 +105,13 @@ fun FleetScreen(
                 }
             }
 
+            SectionTitle("Estaciones")
+            ui.stations.forEach { s ->
+                val reading = ui.stationReadings[s.id] ?: StationReadings()
+                StationCard(s.name, reading)
+                Spacer(Modifier.height(8.dp))
+            }
+
             SectionTitle("Unidades")
             ui.rovers.forEach { r ->
                 RoverCard(r, ui.now) { onOpenRover(r.id) }
@@ -128,6 +136,32 @@ fun FleetScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Sensor fijo de la estación: el sismo se mide aquí, no en los rovers. */
+@Composable
+private fun StationCard(name: String, r: StationReadings) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (r.seismicAlarm) Color(0xFFFEE2E2) else Color.White,
+        border = BorderStroke(1.dp, if (r.seismicAlarm) EchoColors.RedText.copy(alpha = 0.5f) else EchoColors.Line),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = EchoColors.Ink)
+                Text("Sensor sísmico fijo en la pared", fontSize = 12.sp, color = EchoColors.Muted)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "${"%.2f".format(r.seismicG)} g", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp,
+                    color = if (r.seismicAlarm) EchoColors.RedText else EchoColors.Ink,
+                )
+                Text(if (r.seismicAlarm) "Sismo detectado" else "Normal", fontSize = 12.sp,
+                    color = if (r.seismicAlarm) EchoColors.RedText else EchoColors.GreenDark)
             }
         }
     }

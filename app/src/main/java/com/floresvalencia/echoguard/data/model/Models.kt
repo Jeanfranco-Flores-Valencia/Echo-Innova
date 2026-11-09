@@ -171,11 +171,11 @@ enum class RoverMode(val label: String) {
     OFFLINE("Sin señal"),
 }
 
+/** Sensores que lleva cada rover (móvil). */
 data class SensorReadings(
     val smokePpm: Int = 12,
     val coPpm: Int = 4,
     val temperatureC: Int = 24,
-    val seismicG: Float = 0.01f,
     val dustUg: Int = 18,
     val flame: Boolean = false,
 ) {
@@ -183,8 +183,17 @@ data class SensorReadings(
     val smokeAlarm get() = smokePpm >= 300
     val coAlarm get() = coPpm >= 50
     val heatAlarm get() = temperatureC >= 57
-    val seismicAlarm get() = seismicG >= 0.15f
     val dustAlarm get() = dustUg >= 150
+}
+
+/**
+ * Sensores de la estación de pared. El sismo se mide aquí y no en el rover:
+ * la estación está fija a la estructura y no la afectan las vibraciones de los motores.
+ */
+data class StationReadings(
+    val seismicG: Float = 0.01f,
+) {
+    val seismicAlarm get() = seismicG >= 0.15f
 }
 
 data class Rover(
@@ -237,6 +246,8 @@ data class Alert(
     val hazard: HazardType? = null,
     val roverId: String? = null,
     val createdBy: String? = null,
+    /** Estación que originó la detección (p. ej., un sismo). */
+    val stationId: String? = null,
 )
 
 enum class EmergencyMode { NONE, DRILL, REAL }

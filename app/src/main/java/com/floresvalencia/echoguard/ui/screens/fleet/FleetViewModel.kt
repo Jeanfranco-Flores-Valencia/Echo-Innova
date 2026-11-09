@@ -7,6 +7,7 @@ import com.floresvalencia.echoguard.data.model.ExitRoute
 import com.floresvalencia.echoguard.data.model.HazardType
 import com.floresvalencia.echoguard.data.model.Rover
 import com.floresvalencia.echoguard.data.model.Station
+import com.floresvalencia.echoguard.data.model.StationReadings
 import com.floresvalencia.echoguard.data.model.distanceTo
 import com.floresvalencia.echoguard.data.repository.EchoRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,11 +21,13 @@ data class FleetUiState(
     val routes: List<ExitRoute> = emptyList(),
     val now: Long = System.currentTimeMillis(),
     val canControl: Boolean = false,
+    /** Sensores fijos de cada estación (sismo). */
+    val stationReadings: Map<String, StationReadings> = emptyMap(),
 )
 
 class FleetViewModel(private val repo: EchoRepository = EchoRepository) : ViewModel() {
-    val ui: StateFlow<FleetUiState> = combine(repo.rovers, repo.routes, repo.now, repo.session) { r, routes, now, user ->
-        FleetUiState(r, repo.stations, routes, now, user?.role?.canControlRovers == true)
+    val ui: StateFlow<FleetUiState> = combine(repo.rovers, repo.routes, repo.now, repo.session, repo.stationReadings) { r, routes, now, user, readings ->
+        FleetUiState(r, repo.stations, routes, now, user?.role?.canControlRovers == true, readings)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FleetUiState(stations = repo.stations))
 
     fun simulateHazard(type: HazardType) = repo.simulateHazard(type)

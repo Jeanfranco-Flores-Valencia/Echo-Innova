@@ -217,7 +217,6 @@ private fun SensorGrid(s: SensorReadings, stale: Boolean) {
         Triple("Humo", "${s.smokePpm} ppm", s.smokeAlarm),
         Triple("CO", "${s.coPpm} ppm", s.coAlarm),
         Triple("Temperatura", "${s.temperatureC} °C", s.heatAlarm),
-        Triple("Sismo", "${"%.2f".format(s.seismicG)} g", s.seismicAlarm),
         Triple("Polvo", "${s.dustUg} µg/m³", s.dustAlarm),
         Triple("Llama", if (s.flame) "Detectada" else "No", s.flame),
     )

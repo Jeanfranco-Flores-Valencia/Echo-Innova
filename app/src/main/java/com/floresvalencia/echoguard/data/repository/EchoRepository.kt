@@ -26,6 +26,7 @@ import com.floresvalencia.echoguard.data.model.SafeMark
 import com.floresvalencia.echoguard.data.model.SensorReadings
 import com.floresvalencia.echoguard.data.model.StaffLogin
 import com.floresvalencia.echoguard.data.model.Station
+import com.floresvalencia.echoguard.data.model.StationReadings
 import com.floresvalencia.echoguard.data.model.User
 import com.floresvalencia.echoguard.data.model.canBeResolvedBy
 import com.floresvalencia.echoguard.data.model.recommended
@@ -242,6 +243,11 @@ object EchoRepository {
 
     fun stationOf(r: Rover): Station = stations.first { it.id == r.homeStationId }
 
+    private val initialStationReadings = stations.associate { it.id to StationReadings() }
+    private val _stationReadings = MutableStateFlow(initialStationReadings)
+    /** Lecturas de los sensores fijos de cada estación (sismo). */
+    val stationReadings: StateFlow<Map<String, StationReadings>> = _stationReadings.asStateFlow()
+
     // =================================================================
     // Sesión
     // =================================================================
@@ -413,16 +419,24 @@ object EchoRepository {
     // =================================================================
     // Detección por sensores
     // =================================================================
-    /** Demo: un rover detecta un peligro con sus sensores y genera una alerta crítica. */
+    /** Demo: un rover (o la estación, si es un sismo) detecta un peligro y genera una alerta crítica. */
     fun simulateHazard(type: HazardType) {
         if (!can(Permission.CONTROL_ROVERS)) return
+        if (type == HazardType.EARTHQUAKE) {
+            val s = stations.first()
+            _stationReadings.update { it + (s.id to StationReadings(seismicG = 0.32f)) }
+            addAlert(
+                AlertKind.HAZARD, "${type.label} detectado", s.name, critical = true, hazard = type, stationId = s.id,
+                detail = "La estación ${s.id} detectó vibración sísmica (0.32 g).",
+            )
+            return
+        }
         val list = _rovers.value
         val r = list.firstOrNull { it.online && it.mode == RoverMode.PATROLLING } ?: list.firstOrNull { it.online }
         val (sensors, reading) = when (type) {
             HazardType.SMOKE -> SensorReadings(smokePpm = 640) to "humo (640 ppm)"
             HazardType.GAS -> SensorReadings(coPpm = 120) to "monóxido de carbono (120 ppm)"
             HazardType.FIRE -> SensorReadings(smokePpm = 420, temperatureC = 68, flame = true) to "llama y 68 °C"
-            HazardType.EARTHQUAKE -> SensorReadings(seismicG = 0.32f, dustUg = 210) to "vibración sísmica (0.32 g)"
             else -> SensorReadings() to type.label.lowercase()
         }
         if (r != null) updateRover(r.id) { it.copy(sensors = sensors) }
@@ -456,9 +470,9 @@ object EchoRepository {
     // =================================================================
     private fun addAlert(
         kind: AlertKind, title: String, source: String, critical: Boolean, detail: String,
-        hazard: HazardType? = null, roverId: String? = null, createdBy: String? = null,
+        hazard: HazardType? = null, roverId: String? = null, createdBy: String? = null, stationId: String? = null,
     ) {
-        val a = Alert(alertIds.incrementAndGet(), kind, title, source, clock(), critical, true, detail, hazard, roverId, createdBy)
+        val a = Alert(alertIds.incrementAndGet(), kind, title, source, clock(), critical, true, detail, hazard, roverId, createdBy, stationId)
         _alerts.update { it + a }
     }
 
@@ -469,6 +483,9 @@ object EchoRepository {
         _alerts.update { l -> l.map { if (it.id == id) it.copy(active = false) else it } }
         audit("Alerta resuelta", a.title)
         if (a.kind == AlertKind.HAZARD && a.roverId != null) updateRover(a.roverId) { it.copy(sensors = SensorReadings()) }
+        if (a.kind == AlertKind.HAZARD && a.stationId != null) {
+            _stationReadings.update { it + (a.stationId to StationReadings()) }
+        }
     }
 
     /** La evacuación se cierra al finalizarla; el resto lo decide quien puede evacuar (o quien ve la flota, si es del sistema). */
@@ -658,5 +675,6 @@ object EchoRepository {
         _rovers.value = initialRovers
         _routes.value = initialRoutes
         _alerts.value = initialAlerts
+        _stationReadings.value = initialStationReadings
     }
 }
