@@ -57,6 +57,7 @@ import com.floresvalencia.echoguard.ui.components.EchoCard
 import com.floresvalencia.echoguard.ui.components.IconChip
 import com.floresvalencia.echoguard.ui.components.SectionTitle
 import com.floresvalencia.echoguard.ui.components.SubScreenHeader
+import com.floresvalencia.echoguard.ui.components.ToggleRow
 import com.floresvalencia.echoguard.ui.theme.EchoColors
 import java.time.Instant
 import java.time.ZoneId
@@ -115,6 +116,15 @@ fun ContactsScreen(onBack: () -> Unit, onMessage: (String) -> Unit, vm: SosViewM
                     )
                 }
             }
+
+            var share by remember { mutableStateOf(vm.shareLocation) }
+            Spacer(Modifier.height(10.dp))
+            ToggleRow(
+                title = "Incluir mi ubicación en el SOS",
+                subtitle = "Solo la reciben tus contactos. No queda guardada en el historial.",
+                checked = share, onCheckedChange = { share = it; vm.setShareLocation(it) },
+                icon = Icons.Rounded.Person, accent = EchoColors.Blue,
+            )
 
             SectionTitle("Mis contactos (${ui.contacts.size}/${vm.maxContacts})")
             if (ui.contacts.isEmpty()) {

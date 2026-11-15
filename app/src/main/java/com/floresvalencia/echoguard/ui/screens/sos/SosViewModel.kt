@@ -54,7 +54,7 @@ class SosViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         val hasPermission = DeviceStatus.hasLocationPermission(ctx)
         draft.update { it.copy(battery = DeviceStatus.battery(ctx), locationPermission = hasPermission, result = null) }
-        if (!hasPermission || locateJob?.isActive == true) return
+        if (!sos.shareLocation || !hasPermission || locateJob?.isActive == true) return
         locateJob = viewModelScope.launch {
             draft.update { it.copy(locating = true) }
             val fix = DeviceStatus.location(ctx)
@@ -104,6 +104,14 @@ class SosViewModel(app: Application) : AndroidViewModel(app) {
                 onError("Este teléfono no tiene app de mensajes")
             }
         }
+    }
+
+    val shareLocation: Boolean get() = sos.shareLocation
+
+    fun setShareLocation(on: Boolean) {
+        sos.shareLocation = on
+        refreshPreview()
+        if (on) prepare()
     }
 
     fun reset() { draft.update { SosDraft(location = it.location, battery = it.battery, locationPermission = it.locationPermission) } }

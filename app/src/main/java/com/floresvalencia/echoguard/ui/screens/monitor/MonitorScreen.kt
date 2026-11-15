@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.VideocamOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -121,6 +122,7 @@ fun MonitorScreen(vm: MonitorViewModel = viewModel()) {
             CameraFeed(
                 direction = CameraDirection.FRONT,
                 connected = ui.connected,
+                    nightVision = ui.selected?.nightVision == true,
                 big = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -132,6 +134,7 @@ fun MonitorScreen(vm: MonitorViewModel = viewModel()) {
                 CameraFeed(
                     direction = CameraDirection.LEFT,
                     connected = ui.connected,
+                    nightVision = ui.selected?.nightVision == true,
                     modifier = Modifier
                         .weight(1f)
                         .aspectRatio(4f / 3.4f),
@@ -140,6 +143,7 @@ fun MonitorScreen(vm: MonitorViewModel = viewModel()) {
                 CameraFeed(
                     direction = CameraDirection.RIGHT,
                     connected = ui.connected,
+                    nightVision = ui.selected?.nightVision == true,
                     modifier = Modifier
                         .weight(1f)
                         .aspectRatio(4f / 3.4f),
@@ -163,6 +167,16 @@ fun MonitorScreen(vm: MonitorViewModel = viewModel()) {
                     onCheckedChange = vm::setLightRoute,
                     icon = Icons.Rounded.Lightbulb,
                 )
+                Spacer(Modifier.height(8.dp))
+                val ir = ui.selected?.nightVision == true
+                ToggleRow(
+                    title = "Visión nocturna (IR)",
+                    subtitle = if (ir) "Ve en la oscuridad y entre el humo" else "Para cortes de luz o humo",
+                    checked = ir,
+                    onCheckedChange = vm::setNightVision,
+                    icon = Icons.Rounded.NightsStay,
+                    accent = EchoColors.Green,
+                )
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -181,6 +195,7 @@ fun MonitorScreen(vm: MonitorViewModel = viewModel()) {
                 CameraFeed(
                     direction = dir,
                     connected = ui.connected,
+                    nightVision = ui.selected?.nightVision == true,
                     big = true,
                     clock = ui.clock,
                     modifier = Modifier
@@ -233,6 +248,8 @@ fun CameraFeed(
     modifier: Modifier = Modifier,
     big: Boolean = false,
     clock: String? = null,
+    /** Cámara infrarroja: imagen monocroma verde, como las de visión nocturna. */
+    nightVision: Boolean = false,
     onClick: () -> Unit,
 ) {
     val t = rememberInfiniteTransition(label = "feed")
@@ -249,10 +266,11 @@ fun CameraFeed(
             val w = size.width
             val h = size.height
             val cx = w * direction.focusX
-            drawRect(Brush.verticalGradient(listOf(Color(0xFF08112A), Color(0xFF03060F))))
+            drawRect(Brush.verticalGradient(if (nightVision) listOf(Color(0xFF0B2A12), Color(0xFF041208)) else listOf(Color(0xFF08112A), Color(0xFF03060F))))
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0x4D7896D2), Color(0x147896D2), Color.Transparent),
+                    colors = if (nightVision) listOf(Color(0x8044FF77), Color(0x2044FF77), Color.Transparent)
+                    else listOf(Color(0x4D7896D2), Color(0x147896D2), Color.Transparent),
                     center = Offset(cx, h / 2),
                     radius = h * 0.8f,
                 ),
@@ -260,7 +278,7 @@ fun CameraFeed(
                 center = Offset(cx, h / 2),
             )
             // Perspectiva del pasillo
-            val line = Color(0x4796AFE1)
+            val line = if (nightVision) Color(0x8066FF8C) else Color(0x4796AFE1)
             drawLine(line, Offset(0f, h), Offset(cx, h * 0.52f), strokeWidth = 1.5f)
             drawLine(line, Offset(w, h), Offset(cx, h * 0.52f), strokeWidth = 1.5f)
             // Mira
@@ -287,7 +305,7 @@ fun CameraFeed(
                     .background(EchoColors.RedText.copy(alpha = if (connected) blink else 0.3f))
             )
             Spacer(Modifier.width(6.dp))
-            Text(direction.label.uppercase(), color = EchoColors.Ink, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+            Text(direction.label.uppercase() + if (nightVision) " · IR" else "", color = EchoColors.Ink, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
         }
         Text(
             listOfNotNull(clock, "${direction.degrees}°").joinToString("  "),

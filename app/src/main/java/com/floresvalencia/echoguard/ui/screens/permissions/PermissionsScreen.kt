@@ -72,6 +72,7 @@ fun PermissionsScreen(onBack: () -> Unit, onMessage: (String) -> Unit, vm: Permi
     var creating by rememberSaveable { mutableStateOf(false) }
     var pinFor by remember { mutableStateOf<StaffAccount?>(null) }
     var showMatrix by rememberSaveable { mutableStateOf(false) }
+    var addingPhone by rememberSaveable { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -136,6 +137,29 @@ fun PermissionsScreen(onBack: () -> Unit, onMessage: (String) -> Unit, vm: Permi
                 BigButton("Agregar persona", onClick = { creating = true }, icon = Icons.Rounded.Add, height = 54.dp, fontSize = 15f)
             }
 
+            // ---- Teléfonos de responsables (SMS sin internet)
+            if (ui.canManage) {
+                SectionTitle("Teléfonos para avisos por SMS")
+                Text("Al iniciar una evacuación, la brigada les avisa por SMS. Funciona sin internet.", fontSize = 13.sp, color = EchoColors.Muted)
+                Spacer(Modifier.height(8.dp))
+                EchoCard {
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        if (ui.phones.isEmpty()) Text("Aún no hay teléfonos.", color = EchoColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(14.dp))
+                        ui.phones.forEach { p ->
+                            Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(p.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = EchoColors.Ink)
+                                    Text("${runCatching { Role.valueOf(p.role).label }.getOrDefault(p.role)} · ${p.phone}", fontSize = 12.sp, color = EchoColors.Muted)
+                                }
+                                TextButton(onClick = { vm.deletePhone(p.id) }) { Text("Quitar", color = EchoColors.RedText) }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                BigButton("Agregar teléfono", onClick = { addingPhone = true }, icon = Icons.Rounded.Add, outlined = true, container = EchoColors.Blue, height = 50.dp, fontSize = 14f)
+            }
+
             // ---- Auditoría
             if (ui.canAudit) {
                 SectionTitle("Registro de acciones")
@@ -174,6 +198,16 @@ fun PermissionsScreen(onBack: () -> Unit, onMessage: (String) -> Unit, vm: Permi
                         creating = false
                         onMessage("Cuenta creada · $name")
                     } else setError(err)
+                }
+            },
+        )
+    }
+    if (addingPhone) {
+        PhoneDialog(
+            onDismiss = { addingPhone = false },
+            onSave = { name, role, phone, setError ->
+                vm.addPhone(name, role, phone) { err ->
+                    if (err == null) { addingPhone = false; onMessage("Teléfono guardado") } else setError(err)
                 }
             },
         )
@@ -346,6 +380,34 @@ private fun PinDialog(title: String, onDismiss: () -> Unit, onSave: (String, (St
             }
         },
         confirmButton = { TextButton(onClick = { onSave(pin) { error = it } }) { Text("Guardar", fontWeight = FontWeight.Bold, color = EchoColors.Blue) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = EchoColors.Ink) } },
+    )
+}
+
+@Composable
+private fun PhoneDialog(onDismiss: () -> Unit, onSave: (String, Role, String, (String) -> Unit) -> Unit) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var role by rememberSaveable { mutableStateOf(Role.BRIGADISTA) }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Teléfono de responsable") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it.take(40); error = null }, label = { Text("Nombre") }, singleLine = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Role.staffRoles.forEach { r -> FilterChip(selected = role == r, onClick = { role = r }, label = { Text(r.label, fontSize = 12.sp) }) }
+                }
+                OutlinedTextField(
+                    phone, { phone = it.take(20); error = null }, label = { Text("Celular") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                )
+                error?.let { Text(it, color = EchoColors.RedText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(name, role, phone) { error = it } }) { Text("Guardar", fontWeight = FontWeight.Bold, color = EchoColors.Blue) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = EchoColors.Ink) } },
     )
 }

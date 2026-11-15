@@ -182,9 +182,8 @@ fun RegisterScreen(
             title = "¿Qué está pasando?",
             onDismiss = { showReport = false },
             onReport = { type ->
-                vm.reportAnonymous(type)
                 showReport = false
-                onMessage("Aviso enviado a la brigada")
+                onMessage(if (vm.reportAnonymous(type)) "Aviso enviado a la brigada" else "Ya enviaste un aviso. Espera un minuto para enviar otro.")
             },
         )
     }

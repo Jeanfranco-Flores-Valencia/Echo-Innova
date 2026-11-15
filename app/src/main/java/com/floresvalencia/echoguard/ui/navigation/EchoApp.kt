@@ -65,6 +65,7 @@ import com.floresvalencia.echoguard.data.model.EmergencyMode
 import com.floresvalencia.echoguard.data.model.Role
 import com.floresvalencia.echoguard.ui.components.AlarmOverlay
 import com.floresvalencia.echoguard.ui.components.EmergencyBanner
+import com.floresvalencia.echoguard.ui.components.PinConfirmDialog
 import com.floresvalencia.echoguard.ui.components.StartEmergencyDialog
 import com.floresvalencia.echoguard.ui.components.StopEmergencyDialog
 import com.floresvalencia.echoguard.ui.screens.alerts.AlertsScreen
@@ -72,6 +73,7 @@ import com.floresvalencia.echoguard.ui.screens.classroom.ClassroomScreen
 import com.floresvalencia.echoguard.ui.screens.evacuation.EvacuationScreen
 import com.floresvalencia.echoguard.ui.screens.feedback.FeedbackScreen
 import com.floresvalencia.echoguard.ui.screens.guide.GuideScreen
+import com.floresvalencia.echoguard.ui.screens.history.HistoryScreen
 import com.floresvalencia.echoguard.ui.screens.permissions.PermissionsScreen
 import com.floresvalencia.echoguard.ui.screens.sos.ContactsScreen
 import com.floresvalencia.echoguard.ui.screens.fleet.FleetScreen
@@ -84,6 +86,9 @@ import com.floresvalencia.echoguard.ui.screens.route.RouteScreen
 import com.floresvalencia.echoguard.ui.theme.EchoColors
 import com.floresvalencia.echoguard.ui.theme.LocalEmergencyMode
 import kotlinx.coroutines.launch
+
+/** Para qué se pide el PIN de confirmación. */
+enum class PinPurpose { START_REAL, STOP_REAL }
 
 object Routes {
     const val REGISTER = "register"
@@ -100,6 +105,7 @@ object Routes {
     const val GUIDE = "guide"
     const val FEEDBACK = "feedback"
     const val PERMISSIONS = "permissions"
+    const val HISTORY = "history"
 
     fun rover(id: String) = "rover/$id"
 }
@@ -123,7 +129,7 @@ fun tabsFor(role: Role): List<BottomTab> = when (role) {
 
 private val lightTopRoutes = setOf(
     Routes.EVACUATION, Routes.ALERTS, Routes.ROVER, Routes.CLASSROOM, Routes.ROUTE, Routes.STAFF,
-    Routes.CONTACTS, Routes.GUIDE, Routes.FEEDBACK, Routes.PERMISSIONS,
+    Routes.CONTACTS, Routes.GUIDE, Routes.FEEDBACK, Routes.PERMISSIONS, Routes.HISTORY,
 )
 private val accessRoutes = setOf(Routes.REGISTER, Routes.STAFF)
 
@@ -145,6 +151,8 @@ fun EchoApp(appVm: AppViewModel = viewModel()) {
         }
     }
     var confirmStop by rememberSaveable { mutableStateOf(false) }
+    var pinFor by rememberSaveable { mutableStateOf<PinPurpose?>(null) }
+    var pinError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { appVm.notices.collect { showMessage(it) } }
 
@@ -266,9 +274,10 @@ fun EchoApp(appVm: AppViewModel = viewModel()) {
                     composable(Routes.CONTACTS) { ContactsScreen(onBack = { nav.popBackStack() }, onMessage = showMessage) }
                     composable(Routes.GUIDE) { GuideScreen(onBack = { nav.popBackStack() }) }
                     composable(Routes.FEEDBACK) { FeedbackScreen(onBack = { nav.popBackStack() }, onMessage = showMessage) }
+                    composable(Routes.HISTORY) { HistoryScreen(onBack = { nav.popBackStack() }) }
                     composable(Routes.PERMISSIONS) { PermissionsScreen(onBack = { nav.popBackStack() }, onMessage = showMessage) }
                     composable(Routes.ALERTS) {
-                        AlertsScreen(onStartEvacuation = appVm::requestStart, onOpenRover = { nav.navigate(Routes.rover(it)) })
+                        AlertsScreen(onStartEvacuation = appVm::requestStart, onOpenRover = { nav.navigate(Routes.rover(it)) }, onMessage = showMessage)
                     }
                 }
             }
@@ -302,11 +311,15 @@ fun EchoApp(appVm: AppViewModel = viewModel()) {
 
         // Elegir Real / Simulacro (solo roles autorizados llegan aquí)
         app.startRequest?.let { req ->
-            StartEmergencyDialog(
+            if (pinFor == null) StartEmergencyDialog(
                 cause = req.cause,
                 onDismiss = appVm::cancelStart,
                 onStart = { mode ->
-                    if (appVm.start(mode)) navigate(Routes.EVACUATION) else showMessage("Tu rol no puede iniciar evacuaciones")
+                    when {
+                        mode == EmergencyMode.REAL -> pinFor = PinPurpose.START_REAL
+                        appVm.start(mode) -> navigate(Routes.EVACUATION)
+                        else -> showMessage("Tu rol no puede iniciar evacuaciones")
+                    }
                 },
             )
         }
@@ -317,7 +330,33 @@ fun EchoApp(appVm: AppViewModel = viewModel()) {
                 onDismiss = { confirmStop = false },
                 onConfirm = {
                     confirmStop = false
-                    showMessage(appVm.stopEmergency() ?: "Tu rol no puede finalizar la evacuación")
+                    if (real) pinFor = PinPurpose.STOP_REAL
+                    else showMessage(appVm.stopEmergency() ?: "Tu rol no puede finalizar la evacuación")
+                },
+            )
+        }
+
+        // Evacuación REAL: se confirma con el PIN de quien tiene la sesión.
+        pinFor?.let { purpose ->
+            PinConfirmDialog(
+                title = if (purpose == PinPurpose.START_REAL) "Confirma con tu PIN" else "PIN para finalizar",
+                subtitle = if (purpose == PinPurpose.START_REAL) "Vas a iniciar una EVACUACIÓN REAL." else "Vas a cerrar la evacuación real.",
+                error = pinError,
+                onDismiss = { pinFor = null; pinError = null; appVm.cancelStart() },
+                onPin = { pin ->
+                    if (purpose == PinPurpose.START_REAL) {
+                        appVm.startRealWithPin(pin) { started, err ->
+                            if (err != null) pinError = err
+                            else {
+                                pinFor = null; pinError = null
+                                if (started) navigate(Routes.EVACUATION) else showMessage("Tu rol no puede iniciar evacuaciones")
+                            }
+                        }
+                    } else {
+                        appVm.stopWithPin(pin) { msg, ok ->
+                            if (!ok) pinError = msg else { pinFor = null; pinError = null; showMessage(msg) }
+                        }
+                    }
                 },
             )
         }

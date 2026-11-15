@@ -39,6 +39,7 @@ enum class Permission(val label: String, val group: PermissionGroup) {
     VIEW_AUDIT_LOG("Ver el registro de acciones", PermissionGroup.ADMIN),
     VIEW_TEST_RESULTS("Ver y exportar los resultados de las pruebas", PermissionGroup.ADMIN),
     RESET_DEMO("Reiniciar la demo para el siguiente participante", PermissionGroup.ADMIN),
+    VIEW_EMERGENCY_LOG("Ver el historial de emergencias y confirmaciones", PermissionGroup.ADMIN),
 }
 
 enum class PermissionGroup(val label: String) {
@@ -69,6 +70,7 @@ enum class Role(
             Permission.RESOLVE_ALERTS, Permission.RESOLVE_SYSTEM_ALERTS, Permission.VIEW_FLEET,
             Permission.VIEW_CAMERAS, Permission.CONTROL_ROVERS, Permission.REPORT_ROUTES,
             Permission.VIEW_ALL_CLASSROOMS, Permission.VIEW_TEST_RESULTS, Permission.RESET_DEMO,
+            Permission.VIEW_EMERGENCY_LOG,
         ),
         isStaff = true,
     ),
@@ -79,6 +81,7 @@ enum class Role(
             Permission.RESOLVE_ALERTS, Permission.RESOLVE_SYSTEM_ALERTS, Permission.VIEW_FLEET,
             Permission.VIEW_CAMERAS, Permission.VIEW_ALL_CLASSROOMS, Permission.MANAGE_STAFF,
             Permission.VIEW_AUDIT_LOG, Permission.VIEW_TEST_RESULTS, Permission.RESET_DEMO,
+            Permission.VIEW_EMERGENCY_LOG,
         ),
         isStaff = true,
     ),
@@ -152,6 +155,8 @@ data class ExitRoute(
     val status: RouteStatus,
     val position: MapPoint,
     val arrow: ArrowDir,
+    /** Si la bloqueó automáticamente una detección (humo, fuego...). */
+    val blockedBy: HazardType? = null,
 )
 
 /** Ruta libre más corta; si no hay libres, la congestionada más corta. Nunca una bloqueada. */
@@ -209,6 +214,8 @@ data class Rover(
     val sensors: SensorReadings = SensorReadings(),
     val lightRoute: Boolean = false,
     val facingBack: Boolean = false,
+    /** Cámara en modo infrarrojo (visión nocturna) para humo u oscuridad. */
+    val nightVision: Boolean = false,
     val latencyMs: Int = 42,
     val fps: Int = 24,
 ) {
@@ -307,6 +314,32 @@ data class Occupancy(
 
 enum class EntryResult { OK, FULL, DURING_EVACUATION, NO_PERMISSION }
 
+/** Estado de entrega de una alerta a cada responsable. */
+enum class AckStatus(val label: String) {
+    SENT("Enviada"),
+    RECEIVED("Recibida"),
+    CONFIRMED("Confirmó"),
+}
+
+/** Persona que debe recibir y confirmar las alertas críticas. */
+data class Responder(
+    val username: String,
+    val name: String,
+    val role: Role,
+    val classroomId: String? = null,
+)
+
+/** Resumen de confirmaciones de una alerta. */
+data class AckSummary(val total: Int, val received: Int, val confirmed: Int) {
+    val pending: Int get() = total - confirmed
+}
+
+fun Map<String, AckStatus>.summary(): AckSummary = AckSummary(
+    total = size,
+    received = values.count { it != AckStatus.SENT },
+    confirmed = values.count { it == AckStatus.CONFIRMED },
+)
+
 /** Resumen al finalizar una evacuación o simulacro. */
 data class EvacuationSummary(
     val mode: EmergencyMode,
@@ -319,6 +352,13 @@ data class EvacuationSummary(
     val stillInside: Int,
     /** Se marcaron "Estoy a salvo" en la app. */
     val markedSafe: Int,
+    val startedAtMillis: Long = 0L,
+    val startedBy: String = "",
+    val endedBy: String = "",
+    val cause: HazardType? = null,
+    /** Responsables que confirmaron la alerta de evacuación. */
+    val confirmed: Int = 0,
+    val responders: Int = 0,
 )
 
 /** Persona que confirmó "Estoy a salvo" durante la evacuación. */

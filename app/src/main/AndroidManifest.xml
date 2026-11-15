@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Mantener las alertas activas con la app en segundo plano (servicio en primer plano) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- SOS a contactos de emergencia: SMS (funciona sin internet) con la ubicación GPS -->
     <uses-permission android:name="android.permission.SEND_SMS" />
@@ -12,6 +15,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Solo para enviar las opiniones de las pruebas si hay un servidor configurado -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Avisar cuando no hay internet (el SOS por SMS, el mapa y la guía siguen funcionando) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- La app también funciona en tablets sin SIM o sin GPS (el SOS abre la app de mensajes) -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
@@ -39,6 +44,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Vigilancia de alertas en segundo plano -->
+        <service
+            android:name=".notification.AlertService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Recepción de alertas de evacuación de emergencia" />
+        </service>
+
+        <!-- Botón "Confirmar recepción" de la notificación de alarma -->
+        <receiver
+            android:name=".notification.AckReceiver"
+            android:exported="false" />
 
         <!-- Exportar las opiniones en CSV (compartir por WhatsApp, correo, Drive...) -->
         <provider

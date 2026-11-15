@@ -59,6 +59,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.floresvalencia.echoguard.data.model.ArrowDir
 import com.floresvalencia.echoguard.data.model.ExitRoute
+import com.floresvalencia.echoguard.data.map.MapLayer
+import com.floresvalencia.echoguard.data.map.MapFeature
+import com.floresvalencia.echoguard.data.map.FeatureKind
 import com.floresvalencia.echoguard.data.model.MapPoint
 import com.floresvalencia.echoguard.data.model.RouteStatus
 import com.floresvalencia.echoguard.data.model.Rover
@@ -127,6 +130,12 @@ fun BuildingMap(
     selectedRoverId: String? = null,
     highlightRoute: ExitRoute? = null,
     onRoverClick: ((String) -> Unit)? = null,
+    /** Camino calculado sobre los pasillos (reemplaza la línea simple de [highlightRoute]). */
+    path: List<MapPoint>? = null,
+    youAreHere: MapPoint? = null,
+    features: List<MapFeature> = emptyList(),
+    layers: Set<MapLayer> = MapLayer.entries.toSet(),
+    onFeatureClick: ((MapFeature) -> Unit)? = null,
 ) {
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(fontSize = 10.sp, color = Color(0xFF7A8BA6), fontWeight = FontWeight.SemiBold)
@@ -140,14 +149,17 @@ fun BuildingMap(
             .aspectRatio(EchoRepository.FLOOR_W / EchoRepository.FLOOR_H)
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFFF7F9FC))
-            .pointerInput(rovers, onRoverClick) {
-                if (onRoverClick == null) return@pointerInput
+            .pointerInput(rovers, onRoverClick, features, onFeatureClick) {
+                if (onRoverClick == null && onFeatureClick == null) return@pointerInput
                 detectTapGestures { tap ->
                     val k = size.width / EchoRepository.FLOOR_W
-                    val hit = rovers.minByOrNull { (Offset(it.position.x * k, it.position.y * k) - tap).getDistance() }
-                    if (hit != null && (Offset(hit.position.x * k, hit.position.y * k) - tap).getDistance() < 32.dp.toPx()) {
-                        onRoverClick(hit.id)
+                    fun near(p: MapPoint) = (Offset(p.x * k, p.y * k) - tap).getDistance()
+                    val hit = rovers.minByOrNull { near(it.position) }
+                    if (onRoverClick != null && hit != null && near(hit.position) < 32.dp.toPx()) {
+                        onRoverClick(hit.id); return@detectTapGestures
                     }
+                    val f = features.minByOrNull { near(it.position) }
+                    if (onFeatureClick != null && f != null && near(f.position) < 28.dp.toPx()) onFeatureClick(f)
                 }
             }
     ) {
@@ -170,8 +182,28 @@ fun BuildingMap(
             drawText(measurer, t, topLeft = o, style = labelStyle)
         }
 
+        // Zonas seguras y punto de reunión (debajo de todo lo demás)
+        if (MapLayer.SAFE_ZONES in layers) {
+            features.filter { it.kind == FeatureKind.SAFE_ZONE }.forEach { f ->
+                drawRoundRect(EchoColors.SafeGreen.copy(alpha = 0.12f), topLeft = pt(35f, 22f), size = Size(23f * k, 10f * k), cornerRadius = CornerRadius(8.dp.toPx()))
+                drawRoundRect(EchoColors.SafeGreen.copy(alpha = 0.6f), topLeft = pt(35f, 22f), size = Size(23f * k, 10f * k), cornerRadius = CornerRadius(8.dp.toPx()),
+                    style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
+            }
+        }
+
+        // Camino de evacuación por los pasillos
+        if (path != null && path.size >= 2) {
+            val route = androidx.compose.ui.graphics.Path().apply {
+                moveTo(p(path.first()).x, p(path.first()).y)
+                path.drop(1).forEach { lineTo(p(it).x, p(it).y) }
+            }
+            drawPath(route, Color.White, style = Stroke(9.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            drawPath(route, EchoColors.SafeGreen, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 10f))))
+        }
+
         // Ruta resaltada (desde el cruce central hasta la salida)
-        if (highlightRoute != null) {
+        if (highlightRoute != null && path == null) {
             drawLine(
                 EchoColors.SafeGreen.copy(alpha = 0.85f), pt(30f, 17f), p(highlightRoute.position),
                 strokeWidth = 6.dp.toPx(), cap = StrokeCap.Round,
@@ -192,16 +224,57 @@ fun BuildingMap(
             drawText(measurer, s.id, topLeft = c + Offset(-half, half + 2.dp.toPx()), style = tagStyle)
         }
 
-        // Salidas
-        routes.forEach { r ->
+        // Escaleras, extintores y punto de reunión
+        features.forEach { f ->
+            val c = p(f.position)
+            when (f.kind) {
+                FeatureKind.STAIRS -> if (MapLayer.STAIRS in layers) {
+                    drawRoundRect(Color.White, topLeft = c - Offset(9.dp.toPx(), 9.dp.toPx()), size = Size(18.dp.toPx(), 18.dp.toPx()), cornerRadius = CornerRadius(4.dp.toPx()))
+                    repeat(3) { i ->
+                        val y = c.y + (i - 1) * 4.dp.toPx()
+                        drawLine(EchoColors.Navy, Offset(c.x - 6.dp.toPx() + i * 3.dp.toPx(), y), Offset(c.x + 6.dp.toPx(), y), strokeWidth = 2.dp.toPx())
+                    }
+                }
+                FeatureKind.EXTINGUISHER -> if (MapLayer.EXTINGUISHERS in layers) {
+                    drawCircle(Color.White, radius = 8.dp.toPx(), center = c)
+                    drawCircle(EchoColors.Red, radius = 6.dp.toPx(), center = c)
+                    drawCenteredText(measurer, "E", c, TextStyle(fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.ExtraBold))
+                }
+                FeatureKind.MEETING_POINT -> if (MapLayer.SAFE_ZONES in layers) {
+                    drawCircle(Color.White, radius = 11.dp.toPx(), center = c)
+                    drawCircle(EchoColors.SafeGreen, radius = 9.dp.toPx(), center = c)
+                    drawCenteredText(measurer, "R", c, TextStyle(fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.ExtraBold))
+                }
+                FeatureKind.SAFE_ZONE -> if (MapLayer.SAFE_ZONES in layers) {
+                    drawText(measurer, "ZONA SEGURA", topLeft = pt(37f, 22.6f), style = TextStyle(fontSize = 9.sp, color = EchoColors.SafeGreen, fontWeight = FontWeight.Bold))
+                }
+            }
+        }
+
+        // Salidas (una bloqueada lleva una X)
+        if (MapLayer.EXITS in layers) routes.forEach { r ->
             val c = p(r.position)
             drawCircle(Color.White, radius = 12.dp.toPx(), center = c)
             drawCircle(routeColor(r.status), radius = 10.dp.toPx(), center = c)
-            drawCenteredText(measurer, r.id, c, TextStyle(fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.ExtraBold))
+            if (r.status == RouteStatus.BLOCKED) {
+                val d = 5.dp.toPx()
+                drawLine(Color.White, c - Offset(d, d), c + Offset(d, d), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                drawLine(Color.White, c + Offset(-d, d), c + Offset(d, -d), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+            } else {
+                drawCenteredText(measurer, r.id, c, TextStyle(fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.ExtraBold))
+            }
+        }
+
+        // "Estás aquí"
+        if (youAreHere != null) {
+            val c = p(youAreHere)
+            drawCircle(EchoColors.Blue.copy(alpha = 0.25f), radius = 16.dp.toPx() * ring, center = c)
+            drawCircle(Color.White, radius = 8.dp.toPx(), center = c)
+            drawCircle(EchoColors.Blue, radius = 6.dp.toPx(), center = c)
         }
 
         // Rovers
-        rovers.forEach { r ->
+        if (MapLayer.ROVERS in layers) rovers.forEach { r ->
             val c = p(r.position)
             val station = stations.firstOrNull { it.id == r.homeStationId }
             val outOfRange = station != null && r.position.distanceTo(station.position) > station.rangeM

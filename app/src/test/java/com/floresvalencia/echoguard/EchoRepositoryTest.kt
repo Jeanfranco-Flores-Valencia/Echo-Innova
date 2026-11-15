@@ -26,6 +26,7 @@ class EchoRepositoryTest {
     @Before fun setUp() {
         repo.staffDirectory = InMemoryStaffDirectory()
         repo.auditLog = AuditLog { audit.add(it) }
+        repo.simulateResponders = false
         repo.clearProfile()
         repo.resetDemo()
         audit.clear()

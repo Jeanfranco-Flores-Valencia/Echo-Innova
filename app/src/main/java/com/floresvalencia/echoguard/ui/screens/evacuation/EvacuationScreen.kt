@@ -1,5 +1,11 @@
 package com.floresvalencia.echoguard.ui.screens.evacuation
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.Sms
+import com.floresvalencia.echoguard.ui.components.AckPanel
+import com.floresvalencia.echoguard.ui.components.BigButton
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +80,10 @@ fun EvacuationScreen(
     val o = ui.occupancy
     var confirmReset by rememberSaveable { mutableStateOf(false) }
     var confirmRescue by rememberSaveable { mutableStateOf(false) }
+    var askedSms by rememberSaveable { mutableStateOf(false) }
+    val smsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) vm.sendSmsToResponders(onMessage) else vm.openSmsApp(onMessage)
+    }
     val onEntry: () -> Unit = {
         when (vm.registerEntry()) {
             EntryResult.DURING_EVACUATION -> confirmRescue = true
@@ -97,6 +107,31 @@ fun EvacuationScreen(
             .verticalScroll(rememberScrollState())
     ) {
         ScreenTitle("Evacuación", "Conteo en tiempo real")
+
+        // Quién recibió y confirmó la alerta + aviso por SMS (sin internet) a responsables.
+        if (ui.emergencyActive && ui.canSeeAllClassrooms) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (ui.acks.isNotEmpty()) {
+                    AckPanel(ui.acks, ui.responders, onResend = {
+                        val n = vm.resendPending()
+                        if (n > 0) onMessage("Alerta reenviada a $n responsable(s)")
+                    })
+                }
+                BigButton(
+                    if (ui.responderPhones > 0) "Avisar por SMS a ${ui.responderPhones} responsables" else "SMS a responsables (sin teléfonos)",
+                    onClick = {
+                        when {
+                            ui.responderPhones == 0 -> onMessage("Dirección debe registrar los teléfonos en Roles y permisos")
+                            vm.canSendSmsDirectly() -> vm.sendSmsToResponders(onMessage)
+                            !askedSms -> { askedSms = true; smsPermission.launch(Manifest.permission.SEND_SMS) }
+                            else -> vm.openSmsApp(onMessage)
+                        }
+                    },
+                    icon = Icons.Rounded.Sms, outlined = true, container = EchoColors.RedText, height = 50.dp, fontSize = 14f,
+                )
+                Text("Funciona sin internet: solo necesita señal del operador.", fontSize = 12.sp, color = EchoColors.Muted)
+            }
+        }
 
         if (ui.canSeeAllClassrooms) {
             val reported = ui.classrooms.count { it.status != RollStatus.PENDING }

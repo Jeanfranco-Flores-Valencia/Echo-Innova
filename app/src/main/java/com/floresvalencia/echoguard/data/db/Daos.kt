@@ -104,3 +104,27 @@ interface SosDao {
     @Query("UPDATE sos_log SET status = :status WHERE id = :id")
     suspend fun setStatus(id: Long, status: String)
 }
+
+@Dao
+interface EmergencyLogDao {
+    @Insert
+    suspend fun insert(entry: EmergencyLogEntity): Long
+
+    @Query("SELECT * FROM emergency_log ORDER BY startedAt DESC LIMIT 100")
+    fun observeRecent(): Flow<List<EmergencyLogEntity>>
+}
+
+@Dao
+interface ResponderPhoneDao {
+    @Query("SELECT * FROM responder_phone ORDER BY name")
+    fun observeAll(): Flow<List<ResponderPhoneEntity>>
+
+    @Query("SELECT * FROM responder_phone ORDER BY name")
+    suspend fun all(): List<ResponderPhoneEntity>
+
+    @Insert
+    suspend fun insert(phone: ResponderPhoneEntity): Long
+
+    @Query("DELETE FROM responder_phone WHERE id = :id")
+    suspend fun delete(id: Long)
+}

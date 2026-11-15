@@ -41,6 +41,13 @@ class SosRepository(
     suspend fun contactsNow(): List<EmergencyContactEntity> = withContext(Dispatchers.IO) { db.contactDao().all() }
 
     /** Arma el mensaje con los datos actuales de la persona, la emergencia, el GPS y la batería. */
+    private val prefs = context.getSharedPreferences("echo_sos", Context.MODE_PRIVATE)
+
+    /** La persona decide si el SOS incluye su ubicación GPS (por defecto sí). */
+    var shareLocation: Boolean
+        get() = prefs.getBoolean("share_location", true)
+        set(v) { prefs.edit().putBoolean("share_location", v).apply() }
+
     fun buildMessage(kind: SosKind, location: GeoFix?, battery: BatteryInfo?): String {
         val user = repo.session.value
         val e = repo.emergency.value
@@ -56,7 +63,8 @@ class SosRepository(
                 roleLabel = user?.role?.label ?: "Visitante",
                 classroomId = user?.classroomId,
                 place = EchoRepository.SITE_NAME,
-                location = location,
+                location = if (shareLocation) location else null,
+                locationShared = shareLocation,
                 battery = battery,
                 emergency = emergency,
                 route = route,
@@ -87,7 +95,8 @@ class SosRepository(
             db.sosDao().insert(
                 SosLogEntity(
                     timeMillis = System.currentTimeMillis(), kind = kind.name,
-                    recipients = recipients.joinToString(", ") { it.name }, status = status.name, message = text,
+                    recipients = recipients.joinToString(", ") { it.name }, status = status.name,
+                    message = SosMessage.forHistory(text),
                 )
             )
         }

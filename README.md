@@ -13,6 +13,27 @@ Versión de prueba para Android 8.0+. Instrucciones de instalación y novedades 
 |:-:|:-:|:-:|
 | ![Inicio](docs/capturas/inicio-alumno.png) | ![Roles y permisos](docs/capturas/roles-y-permisos.png) | ![Guía](docs/capturas/guia.png) |
 
+## Novedades de la v2.0 (validación con el Cuerpo General de Bomberos)
+Un especialista del Cuerpo General de Bomberos Voluntarios del Perú evaluó la app. Cada una de sus
+recomendaciones se convirtió en una mejora:
+
+| Recomendación del especialista | Qué hace ahora la app |
+|---|---|
+| Notificaciones inmediatas a todos los responsables, incluso en segundo plano | Servicio en primer plano que mantiene las alertas activas con la app minimizada o la pantalla apagada, y botón **"Confirmar recepción"** en la notificación |
+| Saber quién recibió la alerta y quién no ha respondido | Panel **"Confirmaron X de Y"** en Alertas y en Evacuación: enviada, recibida o confirmada por cada responsable, con **"Reenviar a pendientes"** |
+| Mapas interactivos con salidas, zonas seguras, escaleras y rutas | **Mapa de evacuación** con capas (salidas, zonas seguras, punto de reunión, escaleras, extintores, rovers), "Estás aquí" y el camino real por los pasillos desde tu aula |
+| Rutas alternativas cuando una salida está bloqueada por humo o fuego | Si un rover detecta humo, fuego o gas, **cierra solo la salida más cercana** y la ruta se recalcula al instante; la alerta indica la alternativa |
+| Mejorar la autonomía de los rovers | **Retorno automático** a la estación para cargar al 15 % de batería |
+| Cámaras de visión nocturna y transmisión en tiempo real | Interruptor de **visión nocturna (IR)** en las cámaras en vivo |
+| Sensores reales de temperatura, humo y gases | Contrato de **telemetría JSON** listo para recibir los datos del ESP32 (ver "Conectar el hardware real") |
+| Niveles de acceso y evitar que no autorizados activen alertas | Matriz de permisos por rol (ya existía) + **confirmación con PIN** para iniciar o finalizar una evacuación real + límite a los reportes anónimos (1 por minuto) |
+| Proteger la información personal y las ubicaciones | La ubicación del SOS es **opcional** (interruptor en Contactos SOS) y **no se guarda** en el historial del teléfono |
+| Registros de las emergencias | **Historial de emergencias**: duración, quién inició y cerró, cuántas personas salieron y cuántos responsables confirmaron |
+| Funciones principales sin conexión; SMS o radio | **SMS a responsables** al evacuar (dirección registra sus teléfonos), aviso **"Sin internet"** en Inicio; SOS, mapa, guía y conteo funcionan sin datos |
+
+También se atendió lo que pidieron los usuarios en la primera prueba: **la ruta ahora está en Inicio**
+y hay menos texto en pantalla.
+
 ## Cómo abrir
 1. Android Studio (Ladybug o superior) → **Open** → la carpeta del repositorio.
 2. Esperar la sincronización de Gradle → **Run** en emulador o celular (Android 8.0+).
@@ -161,7 +182,22 @@ El esquema de la base de datos se versiona en `app/schemas/`. Si cambias una ent
 | **Estación de pared** (fija) | Sismo (acelerómetro) | Está anclada a la estructura: los motores y orugas del rover darían falsas alarmas |
 
 ## Conectar el hardware real
-Reemplazar el cuerpo de las funciones de `EchoRepository` (MQTT, Firebase o HTTP al ESP32).
-Los umbrales de sensores están en `SensorReadings` (rover) y `StationReadings` (estación) y deben calibrarse con los sensores reales.
-Para producción, los PIN del personal deberían validarse en un servidor, y las alarmas con la app
-cerrada necesitan notificaciones push (FCM) o un servicio en primer plano.
+Cada rover (ESP32) y cada estación envían un JSON plano; la app lo procesa con `Telemetry.parse()` y
+`EchoRepository.applyTelemetry()`, sin tocar las pantallas:
+
+```json
+{"rover":"R-01","battery":76,"smoke":12,"co":4,"temp":24,"dust":18,"flame":false,"x":20.5,"y":17}
+{"station":"E1","seismic":0.02}
+```
+
+Todos los campos salvo el id son opcionales, y un mensaje inválido se ignora sin afectar la app. El
+transporte (MQTT o HTTP en la red local) es lo único que falta elegir cuando el hardware esté listo.
+Los umbrales de sensores están en `SensorReadings` (rover) y `StationReadings` (estación) y deben
+calibrarse con los sensores reales.
+
+**Pendiente para producción:**
+- Las alertas entre teléfonos distintos necesitan un servidor o notificaciones push (FCM). Hoy el
+  servicio en primer plano mantiene las alertas activas en el teléfono donde se generan.
+- Los PIN del personal deberían validarse en un servidor.
+- Para comunicación por radio cuando no hay señal celular, se recomienda agregar un módulo LoRa a las
+  estaciones (de unos kilómetros de alcance, sin internet ni operador).

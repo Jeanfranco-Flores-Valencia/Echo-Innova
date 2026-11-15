@@ -8,6 +8,17 @@
 2. Haz las tareas que te indica, responde las preguntas y envía tu opinión.
 3. Para probar como personal: botón **Personal** → PIN demo `1111` brigadista · `2222` dirección · `3333` docente.
 
+## Novedades de la v2.0 · mejoras recomendadas por el Cuerpo General de Bomberos
+- **Alertas en segundo plano** y botón "Confirmar recepción" en la notificación.
+- **Quién confirmó:** "Confirmaron X de Y" responsables, con reenvío a los pendientes.
+- **Mapa de evacuación interactivo:** salidas, zonas seguras, punto de reunión, escaleras y extintores, con tu ruta por los pasillos.
+- **Rutas alternativas:** si un rover detecta humo, fuego o gas, cierra la salida cercana y recalcula la ruta.
+- **Rovers:** vuelven solos a cargar al 15 % y tienen visión nocturna (IR).
+- **Seguridad:** PIN para iniciar o finalizar una evacuación real, ubicación del SOS opcional y no guardada, límite a reportes anónimos.
+- **Historial de emergencias** para brigada y dirección.
+- **Sin internet:** SMS a los responsables al evacuar y aviso de "Sin internet" en Inicio.
+- La **ruta ahora está en Inicio** (pedido de los usuarios).
+
 ## Novedades de la v1.3
 - El sensor de sismo pasa a la estación de pared: fija a la estructura, sin falsas alarmas por la vibración de los motores.
 - La pantalla de Flota muestra el sensor sísmico de cada estación.

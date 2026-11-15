@@ -2,6 +2,9 @@ package com.floresvalencia.echoguard.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.floresvalencia.echoguard.data.hardware.Telemetry
+import com.floresvalencia.echoguard.data.map.SchoolMap
+import com.floresvalencia.echoguard.data.model.AckStatus
 import com.floresvalencia.echoguard.data.model.Alert
 import com.floresvalencia.echoguard.data.model.AlertKind
 import com.floresvalencia.echoguard.data.model.ArrowDir
@@ -17,6 +20,7 @@ import com.floresvalencia.echoguard.data.model.HazardType
 import com.floresvalencia.echoguard.data.model.MapPoint
 import com.floresvalencia.echoguard.data.model.Occupancy
 import com.floresvalencia.echoguard.data.model.Permission
+import com.floresvalencia.echoguard.data.model.Responder
 import com.floresvalencia.echoguard.data.model.Role
 import com.floresvalencia.echoguard.data.model.RollStatus
 import com.floresvalencia.echoguard.data.model.RouteStatus
@@ -29,6 +33,8 @@ import com.floresvalencia.echoguard.data.model.Station
 import com.floresvalencia.echoguard.data.model.StationReadings
 import com.floresvalencia.echoguard.data.model.User
 import com.floresvalencia.echoguard.data.model.canBeResolvedBy
+import com.floresvalencia.echoguard.data.model.distanceTo
+import com.floresvalencia.echoguard.data.model.summary
 import com.floresvalencia.echoguard.data.model.recommended
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -207,10 +213,34 @@ object EchoRepository {
                 delay(1_000)
                 tick++
                 _now.value = System.currentTimeMillis()
-                _rovers.update { list -> list.map { simulateTick(it, tick) } }
+                simulateStep(tick)
+                advanceAcks(System.currentTimeMillis())
                 checkStaffIdle()
             }
         }
+    }
+
+    /** Con esta batería el rover vuelve solo a su estación a cargar (así no se pierde sin energía). */
+    const val AUTO_RETURN_BATTERY = 15
+
+    /** Un segundo de simulación de la flota. Devuelve los rovers que volvieron solos a cargar. */
+    internal fun simulateStep(tick: Int): List<String> {
+        val returned = mutableListOf<String>()
+        _rovers.update { list ->
+            list.map { r ->
+                val next = simulateTick(r, tick)
+                if (next.mode == RoverMode.CHARGING && r.mode != RoverMode.CHARGING) returned += r.id
+                next
+            }
+        }
+        returned.forEach { id ->
+            val r = _rovers.value.first { it.id == id }
+            addAlert(
+                AlertKind.SYSTEM, "${r.id} volvió a cargar", r.name, critical = false, roverId = r.id,
+                detail = "Batería al ${r.battery} %: regresó solo a ${r.locationLabel} para no quedarse sin energía.",
+            )
+        }
+        return returned
     }
 
     private fun simulateTick(r: Rover, tick: Int): Rover {
@@ -220,8 +250,10 @@ object EchoRepository {
         if ((r.mode == RoverMode.PATROLLING || r.mode == RoverMode.LOW_BATTERY) && tick % 20 == 0) {
             val b = (r.battery - 1).coerceAtLeast(0)
             next = when {
-                b == 0 -> next.copy(battery = 0, mode = RoverMode.OFFLINE)
-                b <= 15 -> next.copy(battery = b, mode = RoverMode.LOW_BATTERY)
+                b <= AUTO_RETURN_BATTERY -> {
+                    val s = stationOf(r)
+                    next.copy(battery = b, mode = RoverMode.CHARGING, position = s.position, locationLabel = s.name, lightRoute = false)
+                }
                 else -> next.copy(battery = b)
             }
         } else if (r.mode == RoverMode.CHARGING && tick % 10 == 0) {
@@ -366,6 +398,41 @@ object EchoRepository {
         audit(if (on) "Ruta luminosa encendida" else "Ruta luminosa apagada", id)
     }
 
+    /** Cámara infrarroja: ve en la oscuridad y entre el humo. */
+    fun setNightVision(id: String, on: Boolean) {
+        if (!can(Permission.CONTROL_ROVERS)) return
+        updateRover(id) { it.copy(nightVision = on) }
+        audit(if (on) "Visión nocturna activada" else "Visión nocturna desactivada", id)
+    }
+
+    /**
+     * Aplica un dato real llegado del hardware (rover o estación). Así se reemplaza la simulación
+     * por los sensores reales sin tocar las pantallas. Devuelve false si el id no existe.
+     */
+    fun applyTelemetry(t: Telemetry): Boolean = when (t) {
+        is Telemetry.Rover -> {
+            val exists = _rovers.value.any { it.id == t.id }
+            if (exists) updateRover(t.id) { r ->
+                r.copy(
+                    sensors = t.applyTo(r.sensors),
+                    battery = t.battery ?: r.battery,
+                    position = t.position ?: r.position,
+                    locationLabel = t.position?.let { zoneLabel(it) } ?: r.locationLabel,
+                    lastSeenMillis = System.currentTimeMillis(),
+                )
+            }
+            exists
+        }
+        is Telemetry.Station -> {
+            val exists = stations.any { it.id == t.id }
+            if (exists && t.seismicG != null) _stationReadings.update { it + (t.id to StationReadings(seismicG = t.seismicG)) }
+            exists
+        }
+    }
+
+    /** Solo para pruebas: fija la batería de un rover. */
+    internal fun setBatteryForTest(id: String, battery: Int) = updateRover(id) { it.copy(battery = battery) }
+
     fun setFacingBack(id: String, back: Boolean) {
         if (can(Permission.CONTROL_ROVERS)) updateRover(id) { it.copy(facingBack = back) }
     }
@@ -440,17 +507,46 @@ object EchoRepository {
             else -> SensorReadings() to type.label.lowercase()
         }
         if (r != null) updateRover(r.id) { it.copy(sensors = sensors) }
+        val blocked = blockExitNear(r?.position ?: MapPoint(30f, 17f), type)
+        val alt = blocked?.let { SchoolMap.route(null, _routes.value) }
+        val routeNote = when {
+            blocked == null -> ""
+            alt == null -> " ${blocked.name} bloqueada: no quedan salidas libres."
+            else -> " ${blocked.name} bloqueada: ruta alternativa por ${alt.exit.name} (${alt.exit.path})."
+        }
         addAlert(
             AlertKind.HAZARD, "${type.label} detectado", r?.name ?: "Estación E1", critical = true,
             hazard = type, roverId = r?.id,
-            detail = "${r?.id ?: "Sensor fijo"} detectó $reading en ${r?.locationLabel ?: "Ingreso"}.",
+            detail = "${r?.id ?: "Sensor fijo"} detectó $reading en ${r?.locationLabel ?: "Ingreso"}." + routeNote,
         )
+    }
+
+    /** Peligros que obligan a cerrar la salida más cercana (si está a menos de [BLOCK_RADIUS_M]). */
+    private val blockingHazards = setOf(HazardType.SMOKE, HazardType.FIRE, HazardType.GAS)
+    const val BLOCK_RADIUS_M = 25f
+
+    private fun blockExitNear(p: MapPoint, type: HazardType): ExitRoute? {
+        if (type !in blockingHazards) return null
+        val exit = SchoolMap.nearestExit(p, _routes.value) ?: return null
+        if (exit.position.distanceTo(p) > BLOCK_RADIUS_M || exit.status == RouteStatus.BLOCKED) return null
+        _routes.update { l -> l.map { if (it.id == exit.id) it.copy(status = RouteStatus.BLOCKED, blockedBy = type) else it } }
+        audit("Salida bloqueada automáticamente", "${exit.name} por ${type.label.lowercase()}")
+        return _routes.value.first { it.id == exit.id }
     }
 
     // =================================================================
     // Reportes de alumnos / docentes (NO inician evacuación)
     // =================================================================
-    fun reportEmergency(user: User?, type: HazardType) {
+    /** Los reportes sin sesión se limitan para evitar alertas falsas en cadena. */
+    const val ANONYMOUS_REPORT_INTERVAL_MS = 60_000L
+    private var lastAnonymousReport = 0L
+
+    /** Devuelve false si se rechazó (reporte anónimo demasiado seguido). */
+    fun reportEmergency(user: User?, type: HazardType, nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (user == null) {
+            if (nowMillis - lastAnonymousReport < ANONYMOUS_REPORT_INTERVAL_MS) return false
+            lastAnonymousReport = nowMillis
+        }
         val who = when {
             user == null -> "Reporte sin sesión"
             user.role == Role.GENERAL -> "Usuario · ${user.name}"
@@ -463,6 +559,7 @@ object EchoRepository {
             who, critical = true, hazard = type, createdBy = user?.username,
             detail = if (user?.role == Role.DOCENTE) "El docente solicita evaluar una evacuación." else "Verificar en el lugar antes de evacuar.",
         )
+        return true
     }
 
     // =================================================================
@@ -474,6 +571,93 @@ object EchoRepository {
     ) {
         val a = Alert(alertIds.incrementAndGet(), kind, title, source, clock(), critical, true, detail, hazard, roverId, createdBy, stationId)
         _alerts.update { it + a }
+        trackDelivery(a, System.currentTimeMillis())
+    }
+
+    // =================================================================
+    // Responsables: quién recibió y quién confirmó cada alerta crítica
+    // =================================================================
+    val responders = listOf(
+        Responder("gerardo", "Gerardo", Role.BRIGADISTA),
+        Responder("director", "Patricia", Role.DIRECTOR),
+        Responder("docente", "Luis Huamán", Role.DOCENTE, "3B"),
+        Responder("doc-3a", "Rosa Quispe", Role.DOCENTE, "3A"),
+        Responder("doc-3c", "Carmen Rojas", Role.DOCENTE, "3C"),
+        Responder("doc-4a", "Jorge Salas", Role.DOCENTE, "4A"),
+        Responder("doc-lab", "Ana Torres", Role.DOCENTE, "LAB"),
+    )
+
+    private val _acks = MutableStateFlow<Map<Int, Map<String, AckStatus>>>(emptyMap())
+    /** Por alerta: estado de entrega a cada responsable. */
+    val acks: StateFlow<Map<Int, Map<String, AckStatus>>> = _acks.asStateFlow()
+
+    /** En la demo los demás responsables "responden" solos tras unos segundos. Los tests lo apagan. */
+    @Volatile var simulateResponders = true
+    /** (alerta, responsable) → (recibe en, confirma en; null = no confirma). */
+    private val ackSchedule = mutableMapOf<Pair<Int, String>, Pair<Long, Long?>>()
+
+    private fun recipientsFor(a: Alert): List<Responder> = when (a.kind) {
+        AlertKind.EVACUATION -> responders
+        AlertKind.HAZARD, AlertKind.REQUEST -> if (a.critical) responders.filter { it.role.has(Permission.VIEW_HAZARD_ALERTS) } else emptyList()
+        AlertKind.SYSTEM -> emptyList()
+    }
+
+    private fun trackDelivery(a: Alert, now: Long) {
+        val list = recipientsFor(a)
+        if (list.isEmpty()) return
+        val me = _session.value?.username
+        _acks.update { it + (a.id to list.associate { r -> r.username to if (r.username == me) AckStatus.RECEIVED else AckStatus.SENT }) }
+        val rnd = Random(a.id * 7919L)
+        synchronized(ackSchedule) {
+            list.filter { it.username != me }.forEach { r ->
+                val received = now + rnd.nextLong(1_000, 5_000)
+                val confirmed = if (rnd.nextInt(4) == 0) null else received + rnd.nextLong(3_000, 20_000)
+                ackSchedule[a.id to r.username] = received to confirmed
+            }
+        }
+    }
+
+    internal fun advanceAcks(now: Long) {
+        if (!simulateResponders) return
+        val sched = synchronized(ackSchedule) { ackSchedule.toMap() }
+        if (sched.isEmpty()) return
+        _acks.update { all ->
+            all.mapValues { (id, m) ->
+                m.mapValues { (user, st) ->
+                    val (rec, conf) = sched[id to user] ?: return@mapValues st
+                    when {
+                        st != AckStatus.CONFIRMED && conf != null && now >= conf -> AckStatus.CONFIRMED
+                        st == AckStatus.SENT && now >= rec -> AckStatus.RECEIVED
+                        else -> st
+                    }
+                }
+            }
+        }
+    }
+
+    /** La persona con sesión confirma que vio la alerta (al tocar "Entendido" o actuar). */
+    fun confirmAlert(alertId: Int) {
+        val me = _session.value?.username ?: return
+        _acks.update { all ->
+            val m = all[alertId] ?: return@update all
+            if (me !in m) all else all + (alertId to (m + (me to AckStatus.CONFIRMED)))
+        }
+    }
+
+    /** Vuelve a avisar a quienes no confirmaron. Devuelve a quiénes (para avisarles también por SMS). */
+    fun resendPending(alertId: Int, nowMillis: Long = System.currentTimeMillis()): List<Responder> {
+        if (!can(Permission.VIEW_HAZARD_ALERTS)) return emptyList()
+        val m = _acks.value[alertId] ?: return emptyList()
+        val pending = responders.filter { m[it.username] != null && m[it.username] != AckStatus.CONFIRMED }
+        val rnd = Random(nowMillis)
+        synchronized(ackSchedule) {
+            pending.forEach { r ->
+                val rec = nowMillis + rnd.nextLong(500, 3_000)
+                ackSchedule[alertId to r.username] = rec to rec + rnd.nextLong(2_000, 10_000)
+            }
+        }
+        if (pending.isNotEmpty()) audit("Alerta reenviada", "${pending.size} responsable(s) sin confirmar")
+        return pending
     }
 
     /** Resolver / descartar. Si era una detección, normaliza los sensores del rover. */
@@ -482,6 +666,10 @@ object EchoRepository {
         if (!canResolve(a)) return
         _alerts.update { l -> l.map { if (it.id == id) it.copy(active = false) else it } }
         audit("Alerta resuelta", a.title)
+        // Si la detección había cerrado una salida, se reabre.
+        if (a.kind == AlertKind.HAZARD && a.hazard in blockingHazards) {
+            _routes.update { l -> l.map { if (it.blockedBy == a.hazard) it.copy(status = RouteStatus.FREE, blockedBy = null) else it } }
+        }
         if (a.kind == AlertKind.HAZARD && a.roverId != null) updateRover(a.roverId) { it.copy(sensors = SensorReadings()) }
         if (a.kind == AlertKind.HAZARD && a.stationId != null) {
             _stationReadings.update { it + (a.stationId to StationReadings()) }
@@ -494,6 +682,19 @@ object EchoRepository {
     // =================================================================
     // Evacuación (solo roles autorizados)
     // =================================================================
+    /** Dónde se guardan las emergencias terminadas. EchoApplication lo conecta a la base de datos. */
+    var emergencyLog: EmergencyLog = EmergencyLog { }
+
+    /**
+     * Confirma que el PIN pertenece a quien tiene la sesión de personal.
+     * Se pide antes de iniciar o finalizar una evacuación REAL (por si el teléfono queda desbloqueado).
+     */
+    suspend fun verifyStaffPin(pin: String): Boolean {
+        val me = _staff.value ?: return false
+        val ok = staffDirectory.findActiveByPinHash(Pins.hash(pin))?.username == me.username
+        if (!ok) audit("PIN incorrecto al confirmar evacuación", "", me)
+        return ok
+    }
     fun startEmergency(user: User?, mode: EmergencyMode, cause: HazardType?): Boolean {
         if (user == null || !user.role.canStartEvacuation || mode == EmergencyMode.NONE) return false
         _emergency.value = EmergencyState(mode, System.currentTimeMillis(), user.name, cause)
@@ -531,11 +732,16 @@ object EchoRepository {
         val e = _emergency.value
         if (!e.active) return null
         val o = _occupancy.value
+        val evacAlert = _alerts.value.lastOrNull { it.kind == AlertKind.EVACUATION && it.active }
+        val ack = evacAlert?.let { _acks.value[it.id] }?.summary()
         val summary = EvacuationSummary(
             mode = e.mode,
             durationMs = System.currentTimeMillis() - e.startedAtMillis,
             atAlarm = o.atAlarm, evacuated = o.evacuated, stillInside = o.inside, markedSafe = _safe.value.size,
+            startedAtMillis = e.startedAtMillis, startedBy = e.startedBy, endedBy = user.name, cause = e.cause,
+            confirmed = ack?.confirmed ?: 0, responders = ack?.total ?: 0,
         )
+        emergencyLog.record(summary)
         _occupancy.value = o.copy(atAlarm = 0, evacuated = 0)
         _emergency.value = EmergencyState()
         audit(
@@ -615,7 +821,8 @@ object EchoRepository {
                         RouteStatus.FREE -> RouteStatus.CONGESTED
                         RouteStatus.CONGESTED -> RouteStatus.BLOCKED
                         RouteStatus.BLOCKED -> RouteStatus.FREE
-                    }
+                    },
+                    blockedBy = null,
                 )
             }
         }
@@ -676,5 +883,8 @@ object EchoRepository {
         _routes.value = initialRoutes
         _alerts.value = initialAlerts
         _stationReadings.value = initialStationReadings
+        _acks.value = emptyMap()
+        synchronized(ackSchedule) { ackSchedule.clear() }
+        lastAnonymousReport = 0L
     }
 }

@@ -29,6 +29,13 @@ import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.ContactPhone
 import androidx.compose.material.icons.rounded.RateReview
 import androidx.compose.material.icons.rounded.Badge
+import com.floresvalencia.echoguard.ui.components.BuildingMap
+import com.floresvalencia.echoguard.data.model.Permission
+import com.floresvalencia.echoguard.data.map.SchoolMap
+import com.floresvalencia.echoguard.data.map.MapLayer
+import com.floresvalencia.echoguard.data.map.EvacPath
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -63,6 +70,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.floresvalencia.echoguard.data.model.Alert
 import com.floresvalencia.echoguard.data.model.EmergencyMode
+import com.floresvalencia.echoguard.data.model.ExitRoute
 import com.floresvalencia.echoguard.data.model.HazardType
 import com.floresvalencia.echoguard.data.model.Role
 import com.floresvalencia.echoguard.data.model.RollStatus
@@ -144,6 +152,10 @@ fun HomeScreen(
                 }
                 StatusPill(user.role.label + (user.classroomId?.let { " · $it" } ?: ""), EchoColors.Sky, onDark = true)
             }
+            if (!ui.online) {
+                Spacer(Modifier.height(10.dp))
+                StatusPill("Sin internet · SOS por SMS, mapa y guía funcionan", EchoColors.Amber, onDark = true)
+            }
         }
 
         Column(
@@ -169,6 +181,10 @@ fun HomeScreen(
                 }
             }
 
+            // Tu salida, siempre a la vista (pedido en las pruebas con usuarios).
+            SectionTitle("Tu salida")
+            RouteCard(ui.path, ui.routes, ui.user?.classroomId) { onNavigate(Routes.ROUTE) }
+
             SectionTitle("SOS a mis contactos")
             SosCard(ui.contacts, onActivate = { showSos = true }, onManage = { onNavigate(Routes.CONTACTS) })
 
@@ -181,10 +197,19 @@ fun HomeScreen(
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToolTile(Icons.Rounded.Map, "Mapa de evacuación", "Salidas, zonas seguras, escaleras", EchoColors.SafeGreen,
+                    onClick = { onNavigate(Routes.ROUTE) }, modifier = Modifier.weight(1f))
                 ToolTile(Icons.Rounded.RateReview, "Probar y opinar", "Haz la prueba y cuéntanos", EchoColors.Blue,
                     onClick = { onNavigate(Routes.FEEDBACK) }, modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ToolTile(Icons.Rounded.AdminPanelSettings, "Roles y permisos", "Qué puede hacer cada rol", EchoColors.Purple,
                     onClick = { onNavigate(Routes.PERMISSIONS) }, modifier = Modifier.weight(1f))
+                if (user.role.has(Permission.VIEW_EMERGENCY_LOG)) {
+                    ToolTile(Icons.Rounded.History, "Historial", "Emergencias y confirmaciones", EchoColors.Ink,
+                        onClick = { onNavigate(Routes.HISTORY) }, modifier = Modifier.weight(1f))
+                } else Spacer(Modifier.weight(1f))
             }
 
             SectionTitle("Llamada rápida")
@@ -420,20 +445,6 @@ private fun StudentHome(ui: HomeUiState, onReport: () -> Unit, onHelp: () -> Uni
         BigButton("Necesito ayuda", onClick = onHelp, icon = Icons.Rounded.PanTool, container = EchoColors.Blue, modifier = Modifier.weight(1f), height = 72.dp, fontSize = 15f)
     }
     if (ui.myActiveReports > 0) PendingNote()
-    Spacer(Modifier.height(12.dp))
-    Surface(shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(1.dp, EchoColors.Line), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Si hay evacuación", fontWeight = FontWeight.Bold, color = EchoColors.Ink)
-            val guide = if (ui.user?.role == Role.GENERAL) "Sigue la señalética y al personal" else "Sigue a tu docente"
-            listOf("Camina, no corras", "No regreses por tus cosas", guide).forEach {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.CheckCircle, null, tint = EchoColors.SafeGreen, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(it, fontSize = 16.sp, color = EchoColors.Ink)
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -585,6 +596,32 @@ private fun SosCard(contacts: Int, onActivate: () -> Unit, onManage: () -> Unit)
                     Text(if (contacts == 0) "Agregar contactos" else "Editar contactos", color = EchoColors.Blue, fontWeight = FontWeight.SemiBold)
                 }
             }
+        }
+    }
+}
+
+/** Tu salida en una línea + mini mapa con el camino (toca para abrir el mapa completo). */
+@Composable
+private fun RouteCard(path: EvacPath?, routes: List<ExitRoute>, room: String?, onOpen: () -> Unit) {
+    Surface(onClick = onOpen, shape = RoundedCornerShape(22.dp), color = Color.White, border = BorderStroke(1.dp, EchoColors.Line), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                EvacuationSign(path?.exit?.arrow, size = 44.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(path?.exit?.name ?: "Quédate en zona segura", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = EchoColors.Ink)
+                    Text(
+                        (room?.let { "Desde $it" } ?: "Desde el pasillo") + (path?.let { " · ${it.exit.path} · ${it.distanceM} m" } ?: ""),
+                        fontSize = 13.sp, color = EchoColors.Muted,
+                    )
+                }
+                if (path?.isAlternative == true) StatusPill("Alternativa", EchoColors.DrillAmber)
+            }
+            Spacer(Modifier.height(8.dp))
+            BuildingMap(
+                routes = routes, path = path?.points, youAreHere = SchoolMap.pointOf(room),
+                features = SchoolMap.features, layers = setOf(MapLayer.EXITS, MapLayer.SAFE_ZONES),
+            )
         }
     }
 }

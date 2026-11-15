@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.floresvalencia.echoguard.data.model.RoverMode
 import com.floresvalencia.echoguard.data.model.SensorReadings
+import com.floresvalencia.echoguard.data.repository.EchoRepository
 import com.floresvalencia.echoguard.data.model.formatAgo
 import com.floresvalencia.echoguard.ui.components.BigButton
 import com.floresvalencia.echoguard.ui.components.BuildingMap
@@ -161,6 +162,10 @@ fun RoverDetailScreen(
                 MiniMetric(if (r.online) "${r.latencyMs} ms" else "Perdido", "Enlace", Modifier.weight(1f))
                 MiniMetric(if (r.lightRoute) "Encendida" else "Apagada", "Ruta luz", Modifier.weight(1f))
             }
+            Text(
+                "Vuelve solo a cargar al ${EchoRepository.AUTO_RETURN_BATTERY} % de batería" + if (r.nightVision) " · Cámara IR activa" else "",
+                fontSize = 12.sp, color = EchoColors.Muted, modifier = Modifier.padding(top = 6.dp),
+            )
 
             // ---- Sensores ----
             SectionTitle("Sensores")

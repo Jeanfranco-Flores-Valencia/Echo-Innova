@@ -16,6 +16,11 @@ fun interface AuditLog {
     fun record(entry: AuditEntry)
 }
 
+/** Dónde se guarda cada emergencia terminada (historial). */
+fun interface EmergencyLog {
+    fun record(summary: com.floresvalencia.echoguard.data.model.EvacuationSummary)
+}
+
 object Pins {
     private const val SALT = "echo-guard:"
 

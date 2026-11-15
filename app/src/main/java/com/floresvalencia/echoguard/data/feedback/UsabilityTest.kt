@@ -37,6 +37,8 @@ object UsabilityTasks {
         UsabilityTask("fleet", "Revisar el estado de los rovers", "Pestaña Flota", managers),
         UsabilityTask("deploy", "Desplegar un rover y encender la ruta luminosa", "Flota → elegir rover", setOf(Role.BRIGADISTA)),
         UsabilityTask("staff", "Crear una cuenta de personal", "Inicio → Roles y permisos", setOf(Role.DIRECTOR)),
+        UsabilityTask("ack", "Ver qué responsables confirmaron la alerta", "Evacuar → Confirmaron", managers),
+        UsabilityTask("map", "Encontrar la zona segura y una escalera en el mapa", "Inicio → Mapa de evacuación", everyone),
         UsabilityTask("stop", "Finalizar la evacuación", "Banner rojo → Finalizar", managers),
     )
 

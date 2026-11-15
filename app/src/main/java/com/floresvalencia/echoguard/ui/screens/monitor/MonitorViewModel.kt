@@ -34,6 +34,9 @@ class MonitorViewModel(private val repo: EchoRepository = EchoRepository) : View
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MonitorUiState())
 
     fun select(id: String) = repo.selectRover(id)
+    fun setNightVision(on: Boolean) {
+        ui.value.selected?.let { repo.setNightVision(it.id, on) }
+    }
     fun setLightRoute(on: Boolean) {
         ui.value.selected?.let { repo.setLightRoute(it.id, on) }
     }

@@ -43,6 +43,7 @@ import com.floresvalencia.echoguard.data.model.Alert
 import com.floresvalencia.echoguard.data.model.AlertKind
 import com.floresvalencia.echoguard.data.model.canBeResolvedBy
 import com.floresvalencia.echoguard.data.model.HazardType
+import com.floresvalencia.echoguard.ui.components.AckPanel
 import com.floresvalencia.echoguard.ui.components.BigButton
 import com.floresvalencia.echoguard.ui.components.IconChip
 import com.floresvalencia.echoguard.ui.components.ScreenTitle
@@ -53,6 +54,7 @@ import com.floresvalencia.echoguard.ui.theme.EchoColors
 fun AlertsScreen(
     onStartEvacuation: (HazardType?) -> Unit,
     onOpenRover: (String) -> Unit,
+    onMessage: (String) -> Unit = {},
     vm: AlertsViewModel = viewModel(),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -87,6 +89,14 @@ fun AlertsScreen(
                     onResolve = { vm.resolve(alert.id) },
                     onEvacuate = { onStartEvacuation(alert.hazard) },
                     onOpenRover = if (ui.role.canSeeFleet) alert.roverId?.let { id -> { onOpenRover(id) } } else null,
+                    ackPanel = ui.acks[alert.id]?.let { statuses ->
+                        {
+                            AckPanel(statuses, ui.responders, onResend = if (alert.active) ({
+                                val n = vm.resend(alert.id)
+                                if (n > 0) onMessage("Alerta reenviada a $n responsable(s)")
+                            }) else null)
+                        }
+                    },
                 )
             }
         }
@@ -101,6 +111,7 @@ private fun AlertCard(
     onResolve: () -> Unit,
     onEvacuate: () -> Unit,
     onOpenRover: (() -> Unit)?,
+    ackPanel: (@Composable () -> Unit)? = null,
 ) {
     // Las alertas críticas activas se muestran abiertas: la acción debe estar a un toque.
     var open by rememberSaveable(alert.id, alert.active) { mutableStateOf(alert.active && alert.critical) }
@@ -143,6 +154,10 @@ private fun AlertCard(
                 HorizontalDivider(color = Color(0xFFDBE3EF))
                 Spacer(Modifier.height(12.dp))
                 Text(alert.detail, fontSize = 15.sp, color = Color(0xFF475569))
+                ackPanel?.let {
+                    Spacer(Modifier.height(10.dp))
+                    it()
+                }
                 if (alert.active) {
                     Spacer(Modifier.height(12.dp))
                     if (canEvacuate) {

@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.floresvalencia.echoguard.data.repository.EchoRepository
+import com.floresvalencia.echoguard.notification.AlertService
 import com.floresvalencia.echoguard.ui.navigation.EchoApp
 import com.floresvalencia.echoguard.ui.theme.EchoGuardTheme
 
@@ -17,6 +18,12 @@ class MainActivity : ComponentActivity() {
                 EchoApp()
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Mantiene las alertas activas aunque luego la app pase a segundo plano.
+        if (EchoRepository.session.value != null) AlertService.start(this)
     }
 
     /** Cada toque reinicia el contador de inactividad del modo personal. */

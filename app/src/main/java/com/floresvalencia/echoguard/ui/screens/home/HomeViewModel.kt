@@ -3,6 +3,8 @@ package com.floresvalencia.echoguard.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.floresvalencia.echoguard.AppGraph
+import com.floresvalencia.echoguard.data.map.EvacPath
+import com.floresvalencia.echoguard.data.map.SchoolMap
 import com.floresvalencia.echoguard.data.model.Alert
 import com.floresvalencia.echoguard.data.model.AlertKind
 import com.floresvalencia.echoguard.data.model.Classroom
@@ -15,6 +17,7 @@ import com.floresvalencia.echoguard.data.model.RoverMode
 import com.floresvalencia.echoguard.data.model.User
 import com.floresvalencia.echoguard.data.model.formatElapsed
 import com.floresvalencia.echoguard.data.model.recommended
+import com.floresvalencia.echoguard.data.repository.Connectivity
 import com.floresvalencia.echoguard.data.repository.EchoRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +52,10 @@ data class HomeUiState(
     val safeCount: Int = 0,
     val iAmSafe: Boolean = false,
     val contacts: Int = 0,
+    /** Ruta desde el aula de la persona hasta la mejor salida (evita las bloqueadas). */
+    val path: EvacPath? = null,
+    val routes: List<ExitRoute> = emptyList(),
+    val online: Boolean = true,
 )
 
 class HomeViewModel(private val repo: EchoRepository = EchoRepository) : ViewModel() {
@@ -83,12 +90,18 @@ class HomeViewModel(private val repo: EchoRepository = EchoRepository) : ViewMod
             myClassroom = rooms.firstOrNull { it.id == user?.classroomId },
             myActiveReports = alerts.count { it.active && it.createdBy != null && it.createdBy == user?.username && it.kind == AlertKind.REQUEST },
             route = w.d.recommended(),
+            path = SchoolMap.route(user?.classroomId, w.d),
+            routes = w.d,
         )
     }
 
-    val ui: StateFlow<HomeUiState> = combine(base, people) { s, (safe, contacts) ->
-        s.copy(safeCount = safe.size, iAmSafe = safe.any { it.username == s.user?.username }, contacts = contacts)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState(user = repo.session.value))
+    val ui: StateFlow<HomeUiState> = combine(base, people, Connectivity.online) { s, (safe, contacts), online ->
+        s.copy(safeCount = safe.size, iAmSafe = safe.any { it.username == s.user?.username }, contacts = contacts, online = online)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState(
+        user = repo.session.value,
+        routes = repo.routes.value,
+        path = SchoolMap.route(repo.session.value?.classroomId, repo.routes.value),
+    ))
 
     fun report(type: HazardType) = repo.reportEmergency(repo.session.value, type)
     fun dismissAlert(id: Int) = repo.resolveAlert(id)

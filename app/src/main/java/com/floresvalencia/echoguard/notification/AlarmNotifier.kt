@@ -23,6 +23,8 @@ import com.floresvalencia.echoguard.R
  */
 object AlarmNotifier {
     private const val CHANNEL_ID = "echo_alarm"
+    private const val MONITOR_CHANNEL_ID = "echo_monitor"
+    const val MONITOR_NOTIFICATION_ID = 1
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -60,11 +62,40 @@ object AlarmNotifier {
             .setAutoCancel(true)
             .setContentIntent(pending)
             .setFullScreenIntent(pending, true)
+            .addAction(0, "Confirmar recepción", AckReceiver.pendingIntent(context, id))
             .build()
         try {
             NotificationManagerCompat.from(context).notify(id, notification)
         } catch (_: SecurityException) {
             // Permiso revocado: la alarma dentro de la app sigue funcionando.
         }
+    }
+
+    /** Canal silencioso para el aviso permanente "Echo Guard está atento a las alertas". */
+    private fun ensureMonitorChannel(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(MONITOR_CHANNEL_ID) != null) return
+        manager.createNotificationChannel(
+            NotificationChannel(MONITOR_CHANNEL_ID, "Monitoreo de alertas", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Mantiene las alertas activas con la app en segundo plano"
+                setShowBadge(false)
+            }
+        )
+    }
+
+    fun monitorNotification(context: Context): android.app.Notification {
+        ensureMonitorChannel(context)
+        val open = PendingIntent.getActivity(
+            context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Builder(context, MONITOR_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_alarm)
+            .setContentTitle("Echo Guard está atento")
+            .setContentText("Recibirás las alertas aunque la app esté en segundo plano.")
+            .setOngoing(true)
+            .setSilent(true)
+            .setContentIntent(open)
+            .addAction(0, "Detener", AlertService.stopIntent(context))
+            .build()
     }
 }

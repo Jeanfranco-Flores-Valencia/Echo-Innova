@@ -16,7 +16,6 @@ import com.floresvalencia.echoguard.data.model.formatElapsed
 import com.floresvalencia.echoguard.data.model.isVisibleTo
 import com.floresvalencia.echoguard.data.model.recommended
 import com.floresvalencia.echoguard.data.repository.EchoRepository
-import com.floresvalencia.echoguard.notification.AlarmNotifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -54,7 +53,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = EchoRepository
     private val acknowledged = MutableStateFlow<Set<Int>>(emptySet())
     private val startRequest = MutableStateFlow<StartRequest?>(null)
-    private val notified = mutableSetOf<Int>()
 
     private val extras = combine(repo.routes, acknowledged, startRequest) { r, a, s -> Triple(r, a, s) }
 
@@ -81,21 +79,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Si ya hay perfil guardado, la app abre directo en Inicio (sin pasar por el registro). */
     val startDestination: String = if (repo.session.value != null) Routes.HOME else Routes.REGISTER
 
-    init {
-        AlarmNotifier.ensureChannel(app)
-        notified += repo.alerts.value.map { it.id }
-        // Notificación del sistema para alertas críticas nuevas (sirve con la app en segundo plano).
-        viewModelScope.launch {
-            combine(repo.alerts, repo.session) { a, u -> a to u }.collect { (alerts, user) ->
-                if (user == null) return@collect
-                alerts.filter { it.active && it.critical && it.id !in notified && it.createdBy != user.username && isRelevant(it, user) }
-                    .forEach { a ->
-                        notified += a.id
-                        AlarmNotifier.notify(getApplication<Application>(), a.id, a.title, a.detail)
-                    }
-            }
-        }
-    }
+    // Las notificaciones del sistema las envía AlertWatcher (a nivel de proceso, también en segundo plano).
 
     private fun isRelevant(a: Alert, user: User): Boolean = a.isVisibleTo(user)
 
@@ -133,7 +117,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun acknowledge(alertId: Int) { acknowledged.value = acknowledged.value + alertId }
+    /** Cierra la alarma en pantalla y le confirma a la brigada que la persona la vio. */
+    fun acknowledge(alertId: Int) {
+        acknowledged.value = acknowledged.value + alertId
+        repo.confirmAlert(alertId)
+    }
 
     fun requestStart(cause: HazardType?) {
         if (repo.session.value?.role?.canStartEvacuation == true) startRequest.value = StartRequest(cause)
@@ -145,6 +133,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val cause = startRequest.value?.cause
         startRequest.value = null
         return repo.startEmergency(repo.session.value, mode, cause)
+    }
+
+    /** Evacuación REAL: se confirma con el PIN de quien tiene la sesión (por si el teléfono quedó desbloqueado). */
+    fun startRealWithPin(pin: String, onResult: (started: Boolean, error: String?) -> Unit) {
+        viewModelScope.launch {
+            if (!repo.verifyStaffPin(pin)) onResult(false, "PIN incorrecto") else onResult(start(EmergencyMode.REAL), null)
+        }
+    }
+
+    /** Finalizar una evacuación REAL también exige el PIN. Devuelve el resumen o el error. */
+    fun stopWithPin(pin: String, onResult: (message: String, ok: Boolean) -> Unit) {
+        viewModelScope.launch {
+            if (!repo.verifyStaffPin(pin)) onResult("PIN incorrecto", false)
+            else onResult(stopEmergency() ?: "Tu rol no puede finalizar la evacuación", true)
+        }
     }
 
     /** Resumen para mostrar al finalizar, o null si el rol no puede finalizar. */

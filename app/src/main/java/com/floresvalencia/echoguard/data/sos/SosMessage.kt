@@ -34,6 +34,8 @@ data class SosContext(
     val classroomId: String?,
     val place: String,
     val location: GeoFix?,
+    /** La persona decidió no compartir su ubicación. */
+    val locationShared: Boolean = true,
     val battery: BatteryInfo?,
     /** "Evacuación REAL en curso · Fuego", o null si no hay emergencia. */
     val emergency: String?,
@@ -61,7 +63,7 @@ object SosMessage {
             val details = listOfNotNull(g.accuracyM?.let { "+-${it} m" }, if (ago >= 1) "hace $ago min" else null)
             "Ubicacion: https://maps.google.com/?q=%.5f,%.5f".format(Locale.US, g.lat, g.lon) +
                 if (details.isEmpty()) "" else " (${details.joinToString(", ")})"
-        } ?: "Ubicacion GPS: no disponible"
+        } ?: if (c.locationShared) "Ubicacion GPS: no disponible" else "Ubicacion: no compartida"
         val battery = c.battery?.let { b ->
             "Bateria: ${b.percent}%" + when {
                 b.charging -> " (cargando)"
@@ -82,6 +84,13 @@ object SosMessage {
         )
         return smsSafe(lines.joinToString("\n"))
     }
+
+    /**
+     * Versión para el historial del teléfono: sin el enlace con las coordenadas
+     * (la ubicación solo la reciben los contactos elegidos, no queda guardada).
+     */
+    fun forHistory(text: String): String =
+        text.lines().joinToString("\n") { if (it.startsWith("Ubicacion: https://")) "Ubicacion: enviada a los contactos" else it }
 
     /** Quita tildes y reemplaza símbolos que obligan a usar SMS más cortos (UCS-2). */
     fun smsSafe(text: String): String =

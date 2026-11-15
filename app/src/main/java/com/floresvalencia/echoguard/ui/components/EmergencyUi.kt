@@ -30,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -127,6 +130,40 @@ fun StartEmergencyDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar", fontSize = 16.sp, color = EchoColors.Ink) }
         },
+    )
+}
+
+/** Pide el PIN de quien tiene la sesión antes de una acción crítica (evacuación real). */
+@Composable
+fun PinConfirmDialog(
+    title: String,
+    subtitle: String,
+    error: String?,
+    onDismiss: () -> Unit,
+    onPin: (String) -> Unit,
+) {
+    var pin by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(subtitle, color = EchoColors.RedText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                PinPad(
+                    pin = pin,
+                    error = error != null,
+                    onDigit = { d ->
+                        if (pin.length < 4) pin += d
+                        if (pin.length == 4) { onPin(pin); pin = "" }
+                    },
+                    onDelete = { pin = pin.dropLast(1) },
+                )
+                Text(error ?: " ", color = EchoColors.RedText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", fontSize = 16.sp, color = EchoColors.Ink) } },
     )
 }
 

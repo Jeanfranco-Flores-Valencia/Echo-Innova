@@ -107,3 +107,37 @@ data class SosLogEntity(
     val status: String,
     val message: String,
 )
+
+// ---------------------------------------------------------------------
+// v2: historial de emergencias y teléfonos de responsables
+// ---------------------------------------------------------------------
+
+/** Una evacuación o simulacro terminado (para el registro de emergencias). */
+@Entity(tableName = "emergency_log", indices = [Index("startedAt")])
+data class EmergencyLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val startedAt: Long,
+    val endedAt: Long,
+    /** Nombre del enum EmergencyMode. */
+    val mode: String,
+    /** Nombre del enum HazardType, o null. */
+    val cause: String?,
+    val startedBy: String,
+    val endedBy: String,
+    val atAlarm: Int,
+    val evacuated: Int,
+    val stillInside: Int,
+    val markedSafe: Int,
+    val confirmed: Int,
+    val responders: Int,
+)
+
+/** Teléfono de un responsable para avisarle por SMS cuando no hay internet. */
+@Entity(tableName = "responder_phone")
+data class ResponderPhoneEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** Nombre del enum Role. */
+    val role: String,
+    val phone: String,
+)
