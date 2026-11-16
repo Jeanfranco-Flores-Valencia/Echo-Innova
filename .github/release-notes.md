@@ -8,6 +8,9 @@
 2. Haz las tareas que te indica, responde las preguntas y envía tu opinión.
 3. Para probar como personal: botón **Personal** → PIN demo `1111` brigadista · `2222` dirección · `3333` docente.
 
+## Novedades de la v2.0.1
+- Inicio y Evacuación abren ya con los datos reales: no se ve por un instante un "sin salida libre" falso.
+
 ## Novedades de la v2.0 · mejoras recomendadas por el Cuerpo General de Bomberos
 - **Alertas en segundo plano** y botón "Confirmar recepción" en la notificación.
 - **Quién confirmó:** "Confirmaron X de Y" responsables, con reenvío a los pendientes.

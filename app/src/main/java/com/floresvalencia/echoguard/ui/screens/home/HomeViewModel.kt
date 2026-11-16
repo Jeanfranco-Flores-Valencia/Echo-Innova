@@ -7,6 +7,7 @@ import com.floresvalencia.echoguard.data.map.EvacPath
 import com.floresvalencia.echoguard.data.map.SchoolMap
 import com.floresvalencia.echoguard.data.model.Alert
 import com.floresvalencia.echoguard.data.model.AlertKind
+import com.floresvalencia.echoguard.data.model.Rover
 import com.floresvalencia.echoguard.data.model.Classroom
 import com.floresvalencia.echoguard.data.model.EmergencyState
 import com.floresvalencia.echoguard.data.model.ExitRoute
@@ -65,10 +66,10 @@ class HomeViewModel(private val repo: EchoRepository = EchoRepository) : ViewMod
     }
     private val people = combine(repo.safe, AppGraph.sos.contacts) { safe, contacts -> safe to contacts.size }
 
-    private val base = combine(repo.session, repo.emergency, repo.now, repo.alerts, world) { user, e, now, alerts, w ->
+    private fun build(user: User?, e: EmergencyState, now: Long, alerts: List<Alert>, w: Quad<List<Rover>, Occupancy, List<Classroom>, List<ExitRoute>>): HomeUiState {
         val rovers = w.a
         val rooms = w.c
-        HomeUiState(
+        return HomeUiState(
             user = user,
             occupancy = w.b,
             emergency = e,
@@ -95,13 +96,24 @@ class HomeViewModel(private val repo: EchoRepository = EchoRepository) : ViewMod
         )
     }
 
+    private val base = combine(repo.session, repo.emergency, repo.now, repo.alerts, world) { user, e, now, alerts, w -> build(user, e, now, alerts, w) }
+
+    /** El estado inicial ya trae los datos reales: nunca se muestra un "sin salida libre" falso al abrir. */
+    private fun current(): HomeUiState {
+        val s = build(
+            repo.session.value, repo.emergency.value, repo.now.value, repo.alerts.value,
+            Quad(repo.rovers.value, repo.occupancy.value, repo.classrooms.value, repo.routes.value),
+        )
+        return s.copy(
+            safeCount = repo.safe.value.size,
+            iAmSafe = repo.safe.value.any { it.username == s.user?.username },
+            online = Connectivity.online.value,
+        )
+    }
+
     val ui: StateFlow<HomeUiState> = combine(base, people, Connectivity.online) { s, (safe, contacts), online ->
         s.copy(safeCount = safe.size, iAmSafe = safe.any { it.username == s.user?.username }, contacts = contacts, online = online)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState(
-        user = repo.session.value,
-        routes = repo.routes.value,
-        path = SchoolMap.route(repo.session.value?.classroomId, repo.routes.value),
-    ))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), current())
 
     fun report(type: HazardType) = repo.reportEmergency(repo.session.value, type)
     fun dismissAlert(id: Int) = repo.resolveAlert(id)

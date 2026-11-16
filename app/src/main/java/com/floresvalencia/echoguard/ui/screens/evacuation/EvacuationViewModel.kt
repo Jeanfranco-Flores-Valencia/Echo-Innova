@@ -65,7 +65,28 @@ class EvacuationViewModel(app: Application) : AndroidViewModel(app) {
     }.combine(delivery) { s, (id, acks, phones) ->
         if (!s.canSeeAllClassrooms) s
         else s.copy(evacAlertId = id, acks = acks, responders = repo.responders, responderPhones = phones)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EvacuationUiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), current())
+
+    /** Estado inicial con los datos reales (sin parpadeo de "sin salida libre" al abrir). */
+    private fun current(): EvacuationUiState {
+        val user = repo.session.value
+        val routes = repo.routes.value
+        val o = repo.occupancy.value
+        val manager = user?.role?.canSeeAllClassrooms == true
+        val evac = repo.alerts.value.lastOrNull { it.kind == AlertKind.EVACUATION && it.active }
+        val now = repo.now.value
+        return EvacuationUiState(
+            occupancy = o, routes = routes, recommended = routes.recommended(), classrooms = repo.classrooms.value,
+            canReportRoutes = user?.role?.canReportRoutes == true,
+            canSeeAllClassrooms = manager,
+            safe = if (manager) repo.safe.value.sortedByDescending { it.timeMillis } else emptyList(),
+            emergencyActive = repo.emergency.value.active,
+            entries5m = o.entriesLast5Min(now), exits5m = o.exitsLast5Min(now),
+            acks = if (manager) evac?.let { repo.acks.value[it.id] }.orEmpty() else emptyMap(),
+            evacAlertId = if (manager) evac?.id else null,
+            responders = if (manager) repo.responders else emptyList(),
+        )
+    }
 
     fun registerExit(): Boolean = repo.registerExit()
     fun registerEntry(rescue: Boolean = false): EntryResult = repo.registerEntry(rescue)
